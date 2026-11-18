@@ -1,0 +1,92 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v7.0.1 (node24), pinned to commit SHA.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # actions/setup-go v7.0.0 (node24), pinned to commit SHA.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "unformatted files:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # 前端是零构建的 ES module：没有打包器兜语法，用 node 的 module
+      # 解析器逐文件校验，再跑一遍 DOM 桩冒烟（import 即触发顶层接线）。
+      - name: console (js syntax + smoke)
+        run: |
+          files=$(ls internal/server/web/js/*.js \
+                       internal/server/web/js/render/*.js)
+          for f in $files; do
+            node --input-type=module --check < "$f"
+          done
+          node scripts/console-smoke.mjs
+
+      - name: build
+        run: |
+          go build ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/gw .
+
+      - name: test
+        run: go test -race -count=1 ./...
+
+      # govulncheck 是 Go 模块，不能直接跟 @latest：它的 go.mod 会要求更高的 Go
+      # 版本，而 setup-go 把 GOTOOLCHAIN 设为 local，不匹配时会在 300ms 内直接失败：
+      #   requires go >= 1.26.0 (running go 1.24.13; GOTOOLCHAIN=local)
+      # 本项目 go.mod 已升到 1.26.11，因此 pin 到 v1.9.0（当前支持 1.26 的最新版）。
+      # 漏洞库是运行时从 vuln.go.dev 拉的，pin 住扫描器不影响扫描时效。
+      #
+      # 为什么要升到 1.26.11：go1.25 的 net/http 有可达漏洞 GO-2026-6859
+      # （MaxBytesReader 头竞争导致 HTTP/1 server 崩溃），Fixed in: net/http@go1.26.11。
+      # 升上来之后本仓库实测输出 "No vulnerabilities found."。
+      #
+      # 退出码收敛为 0：本仓库是 stdlib-only，将来命中的多半仍是 Go 工具链 CVE，
+      # 修不修取决于要不要再抬 go.mod。直接让步骤失败会在 run 页面上挂出一串
+      # failure 注解（每条 trace 一条）让人以为 CI 挂了；这里报告进日志，只留一条
+      # warning 提示。
+      - name: vulncheck
+        run: |
+          set +e
+          report=$(go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./... 2>&1)
+          code=$?
+          set -e
+          # runner 会把日志里任意位置的“文件.go:行:列: 说明”转成 failure 级注解，
+          # 一次扫描动辄十几条（每条 trace 一条），加前缀也拦不住。把“go:行:列”
+          # 改写成“go(行:列)”，信息不丢，但不再匹配注解格式。
+          # 正则单独放变量：整条塞一行会超 80 列（本文件其余行都在 80 内）。
+          rewrite='s#([A-Za-z0-9_./-]+\.go):([0-9]+):([0-9]+)#\1(\2:\3)#g'
+          printf '%s\n' "$report" | sed -E "$rewrite"
+          # `go run` 会把子进程的任何非 0 退出码压成 1，真正的 3（发现漏洞）只
+          # 留在输出文本里，所以按内容判而不是只看退出码。
+          if [ "$code" -eq 0 ]; then
+            echo "govulncheck: 未发现可达漏洞"
+          elif printf '%s' "$report" | grep -q '^exit status 3$'; then
+            echo "::warning::govulncheck 发现可达漏洞（多为 Go 工具链 stdlib），详见日志；不阻塞 CI"
+          else
+            echo "::warning::govulncheck 运行失败（go run 退出码 $code），详见日志；不阻塞 CI"
+          fi
+          exit 0

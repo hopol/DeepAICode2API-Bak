@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>DeepAICode2API 控制台</title>
+<script src="/js/theme-boot.js"></script>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+      </span>
+      <div class="brand-text">
+        <div class="brand-name">DeepAICode2API</div>
+        <div class="brand-sub">控制台</div>
+      </div>
+      <button class="side-toggle" id="sideToggle" type="button"
+              title="收起 / 展开侧边栏" aria-label="收起 / 展开侧边栏" aria-expanded="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+    </div>
+
+    <nav class="nav" aria-label="主导航">
+      <button data-tab="overview" class="on" title="概览">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span class="nav-text">概览</span>
+      </button>
+      <button data-tab="accounts" title="账号池">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-text">账号池</span>
+      </button>
+      <button data-tab="keys" title="密钥">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="17.5" r="3.5"/><path d="M9 15 20 4"/><path d="M17 7l2.5 2.5"/><path d="M14 10l2.5 2.5"/></svg>
+        <span class="nav-text">密钥</span>
+      </button>
+      <button data-tab="logs" title="日志">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m7 15 4-4 3 3 5-5"/></svg>
+        <span class="nav-text">日志</span>
+      </button>
+      <button data-tab="settings" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        <span class="nav-text">设置</span>
+      </button>
+    </nav>
+
+    <div class="side-foot">
+      <span id="health" class="badge"><i class="dot"></i><span>检测中…</span></span>
+      <span id="upstream" class="side-meta">上游 …</span>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" id="navToggle" aria-label="菜单">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="sp"></span>
+      <a class="ver" id="version" href="https://github.com/2951461586/DeepAICode2API/releases"
+         target="_blank" rel="noopener noreferrer" title="检查更新">v…</a>
+      <button class="btn" id="logout" title="退出登录（清除本标签页的口令）">退出</button>
+      <button class="btn" id="lang" title="Language / 语言">EN</button>
+      <button class="btn" id="theme" title="切换白天 / 黑夜模式">
+        <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg id="themeIconSun" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <span id="themeLabel">深色</span>
+      </button>
+      <button class="btn primary" id="refresh">刷新</button>
+    </header>
+
+    <main class="content">
+      <section id="tab-overview" class="tab on">
+        <div class="page-head">
+          <div>
+            <h1>概览</h1>
+            <p class="sub">号池健康、用量统计与上游模型目录</p>
+          </div>
+          <div class="actions">
+            <button class="btn" id="refreshModels">刷新模型目录</button>
+          </div>
+        </div>
+        <div class="cards" id="kpis"></div>
+        <div class="panel" id="runtimePanel">
+          <div class="panel-head">
+            <h2>运行健康</h2>
+            <div class="actions"><span id="runtimeMeta" class="muted mono"></span></div>
+          </div>
+          <div class="runtime-grid" id="runtimeBody"></div>
+          <div class="hint">指标来自进程内直方图（重启清零）：延迟按端点分档、签到阻塞、形状兜底与上游错误码 Top 3。</div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>模型目录</h2>
+            <div class="actions"><span id="modelsMeta" class="muted mono"></span></div>
+          </div>
+          <div class="table-wrap">
+            <table id="modelTable"><thead><tr>
+              <th scope="col" data-sort="id">ID</th><th scope="col" data-sort="name">名称</th><th scope="col" data-sort="billing">计费</th><th scope="col" data-sort="theos">Theos/次</th><th scope="col" data-sort="theos2">每秒计费</th><th scope="col" data-sort="context">上下文</th><th scope="col" data-sort="max">最大输出</th><th scope="col" data-sort="api">端点</th><th scope="col" data-sort="input">输入</th>
+            </tr></thead><tbody id="models"></tbody></table>
+          </div>
+          <div class="hint">目录由上游 <code>/deepai_code/models</code> 下发；计费为 <code>free</code> 的模型每天有免费 Theos 额度。</div>
+        </div>
+      </section>
+
+      <section id="tab-accounts" class="tab">
+        <div class="page-head">
+          <div>
+            <h1>账号池</h1>
+            <p class="sub">上游账号、配额与调度状态</p>
+          </div>
+          <div class="actions">
+            <button class="btn" id="importLocal">导入本机桌面端</button>
+            <button class="btn" id="oauthLogin">浏览器登录</button>
+            <button class="btn" id="checkinAll">刷新全部配额</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>手动添加</h2>
+          </div>
+          <div class="row">
+            <input id="manualName" class="w-180" placeholder="账号名称（可选）">
+            <input id="manualKey" class="w-340" placeholder="API Key（DeepAI 账号密钥）">
+            <button class="btn" id="addManual">添加 API Key</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>账号列表</h2>
+            <div class="actions">
+              <label class="inline-field">每页
+                <select id="acctSize" class="w-auto">
+                  <option value="20">20</option><option value="50">50</option><option value="100">100</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="row" id="acctFilters">
+            <input id="acctGroup" class="w-150" placeholder="分组（留空=全部）">
+            <select id="acctStatus" class="w-140">
+              <option value="">全部状态</option>
+              <option value="ok">ok</option>
+              <option value="error">error</option>
+              <option value="unknown">unknown</option>
+              <option value="blocked">blocked</option>
+            </select>
+            <input id="acctQuery" class="w-260" placeholder="搜索邮箱 / 名称 / Key / 备注">
+            <button class="btn" id="acctFilterApply">筛选</button>
+            <button class="btn" id="acctFilterClear">清空</button>
+            <label class="inline-field">
+              <input type="checkbox" id="acctMask" class="w-auto"> 脱敏显示
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table id="acctTable"><thead><tr>
+              <th scope="col" data-sort="account">账号</th><th scope="col" data-sort="group">分组</th><th scope="col" data-sort="source">来源</th><th scope="col">Key</th><th scope="col" data-sort="plan">套餐 / 验证</th><th scope="col" data-sort="theos">Theos</th><th scope="col" data-sort="status">状态</th><th scope="col" data-sort="failures">失败</th><th scope="col" data-sort="last_used">最近使用</th><th scope="col">操作</th>
+            </tr></thead><tbody id="accounts"></tbody></table>
+          </div>
+          <div class="row mt-12" id="acctPager">
+            <span id="acctInfo" class="muted fs-11"></span>
+            <span class="sp"></span>
+            <button class="btn" id="acctPrev">上一页</button>
+            <button class="btn" id="acctNext">下一页</button>
+          </div>
+          <div class="hint">凭据已脱敏展示；完整 API Key 仅存于本机状态文件（权限 0600）。</div>
+        </div>
+
+        <div class="panel hidden" id="oauthPanel">
+          <div class="panel-head"><h2>浏览器登录</h2></div>
+          <div id="oauthStatus" class="muted fs-12">等待浏览器完成登录…</div>
+          <div class="hint">登录页会在新标签页打开；如果没有自动打开，请点击下面的按钮。</div>
+          <form id="oauthForm" method="GET" action="/login/open" target="_blank" rel="noopener noreferrer" class="oauth-form">
+            <input type="hidden" name="id" id="oauthId" value="">
+            <button class="btn" type="submit">打开 DeepAI 登录页</button>
+          </form>
+          <div class="oauth-row">
+            <input id="oauthLink" readonly spellcheck="false" placeholder="登录链接在发起后生成" class="oauth-link">
+            <button class="btn flex-none" id="oauthCopy" type="button">复制登录链接</button>
+          </div>
+          <div class="hint">链接含一次性 state，可以在另一个浏览器 / 机器上打开（同网络内直接访问网关地址即可）。</div>
+          <div class="hint mt-14">Docker / 远程部署时浏览器回调打不开（127.0.0.1 指的是你自己的机器）：把地址栏里的完整 URL 粘到下面，由网关完成兑换。</div>
+          <textarea id="oauthCallback" spellcheck="false" placeholder="http://127.0.0.1:34105/auth-callback?code=…&amp;state=…" class="oauth-callback"></textarea>
+          <button class="btn mt-8" id="oauthPaste">粘贴回调 URL 完成登录</button>
+          <button class="btn danger mt-10" id="oauthCancel">取消</button>
+        </div>
+      </section>
+
+      <section id="tab-keys" class="tab">
+        <div class="page-head">
+          <div>
+            <h1>API 密钥</h1>
+            <p class="sub">网关对外签发的调用凭据，可绑定号池分组</p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>新建密钥</h2>
+          </div>
+          <div class="row">
+            <input id="keyName" class="w-210" placeholder="密钥备注（可选）">
+            <input id="keyGroup" class="w-170" placeholder="分组（默认 default）">
+            <button class="btn primary" id="addKey">创建密钥</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>密钥列表</h2></div>
+          <div class="table-wrap">
+            <table id="keyTable"><thead><tr><th scope="col" data-sort="key">密钥</th><th scope="col" data-sort="name">备注</th><th scope="col" data-sort="group">分组</th><th scope="col" data-sort="enabled">状态</th><th scope="col" data-sort="requests">请求数</th><th scope="col" data-sort="created">创建时间</th><th scope="col" data-sort="last_used">最近使用</th><th scope="col">操作</th></tr></thead>
+            <tbody id="keys"></tbody></table>
+          </div>
+          <div class="hint">密钥已脱敏。完整密钥只在创建时返回一次，请立即保存。<br>
+            未签发任何密钥时，<code>/v1/*</code> 允许无密钥调用。</div>
+        </div>
+      </section>
+
+      <section id="tab-logs" class="tab">
+        <div class="page-head">
+          <div>
+            <h1>请求日志</h1>
+            <p class="sub">只记录元信息，不落对话内容</p>
+          </div>
+          <div class="actions">
+            <select id="logLimit"><option value="50">最近 50</option><option value="200">最近 200</option><option value="0">全部</option></select>
+            <button class="btn" id="logLive" aria-pressed="false" title="每 5 秒自动刷新（仅本标签页可见时）">实时</button>
+            <button class="btn" id="reloadLogs">刷新</button>
+            <button class="btn danger" id="clearLogs">清空</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="row" id="logFilters">
+            <select id="logEndpoint" class="w-140">
+              <option value="">全部端点</option>
+              <option value="chat">chat</option>
+              <option value="responses">responses</option>
+              <option value="messages">messages</option>
+              <option value="audio">audio</option>
+              <option value="theos">theos</option>
+              <option value="usage">usage</option>
+            </select>
+            <input id="logAccount" class="w-150" placeholder="账号">
+            <input id="logMinStatus" type="number" min="100" max="599" placeholder="状态 ≥" class="w-110">
+            <input id="logKeyword" class="w-220" placeholder="关键字（错误 / 模型）">
+            <input id="logSince" type="datetime-local" title="起始时间" class="w-200">
+            <button class="btn" id="logFilterApply">筛选</button>
+            <button class="btn" id="logFilterClear">重置</button>
+          </div>
+          <div class="table-wrap">
+            <table id="logTable"><thead><tr>
+              <th scope="col" data-sort="time">时间</th><th scope="col" data-sort="endpoint">端点</th><th scope="col" data-sort="model">模型</th><th scope="col" data-sort="stream">流式</th><th scope="col" data-sort="status">状态</th><th scope="col" data-sort="latency">耗时</th><th scope="col" data-sort="chars">字符</th><th scope="col" data-sort="tokens">Token</th><th scope="col" data-sort="cost">成本</th><th scope="col" data-sort="account">账号</th><th scope="col" data-sort="err">错误</th>
+            </tr></thead><tbody id="logs"></tbody></table>
+          </div>
+          <div class="hint">日志落在 <code>&lt;数据文件&gt;-logs.jsonl</code>，超过 8MB 自动轮转；支持 <code>since / endpoint / account / min_status / q</code> 过滤。</div>
+        </div>
+      </section>
+
+      <section id="tab-settings" class="tab">
+        <div class="page-head">
+          <div>
+            <h1>设置</h1>
+            <p class="sub">运行参数、模型别名与管理密码</p>
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="saveSettings">保存设置</button>
+            <button class="btn danger" id="clearStats">重置统计</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>运行参数</h2></div>
+          <div class="grid2">
+            <div><label>请求超时（秒）</label><input id="sTimeout" type="number" min="1"></div>
+            <div><label>最大重试次数</label><input id="sRetries" type="number" min="1"></div>
+            <div><label>日志保留条数</label><input id="sLogKeep" type="number" min="1"></div>
+            <div><label>CORS 允许来源（逗号分隔，留空=仅本机）</label><input id="sCors" placeholder="http://192.168.1.10:8080"></div>
+            <div><label>兜底模型（无法识别的模型名回落到它，留空=目录默认）</label><input id="sFallback" placeholder="glm-5.3-flash"></div>
+            <div>
+              <label>严格模型模式</label>
+              <label class="check-label">
+                <input type="checkbox" id="sStrict" class="w-auto"> 未识别的模型名返回 404（不做静默回落）
+              </label>
+            </div>
+            <div><label>每密钥每秒请求数（0=不限）</label><input id="sRps" type="number" min="0" step="0.1"></div>
+            <div><label>限流桶容量（0=按 RPS 自动）</label><input id="sBurst" type="number" min="0"></div>
+            <div><label>每密钥并发上限（0=不限）</label><input id="sConcurrency" type="number" min="0"></div>
+            <div><label>签到预算（毫秒，0=默认 10 秒）</label><input id="sCheckinBlock" type="number" min="0" step="100"></div>
+            <div>
+              <label>预置桌面端形状</label>
+              <label class="check-label">
+                <input type="checkbox" id="sPresetShape" class="w-auto"> 对确认需要形状的调用方预置 system，省掉一次注定失败的 400
+              </label>
+            </div>
+          </div>
+          <label>模型别名（JSON，如 <code>{"claude-sonnet-4":"glm-5.3-flash"}</code>）</label>
+          <textarea id="sAliases" spellcheck="false"></textarea>
+          <label>管理密码（留空则保持；设置后管理接口必须携带）</label>
+          <input id="sPw" class="w-300" type="password" placeholder="不修改请留空">
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
