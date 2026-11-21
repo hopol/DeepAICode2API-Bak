@@ -20,6 +20,12 @@
 | v0.1.5 | 63 | 文档整理与仓库清理（验收基线重算、索引状态列、dist 与陈旧状态文件）+ 发版 |
 | v0.1.6 | 64 | 客户端 0.3.37 同步：车道 5 → 6（唯一协议面变更）+ 探测序列改为从编译期车道开始 |
 | v0.1.6 | 65 | 结构治理：抽出 `internal/httpx` / `internal/server/web`、重构 `api.js`、0.3.37 复核修补（响应顺序 / 流式出错）+ race 与覆盖率基线 |
+| v0.1.7 | 66 | 客户端 0.3.41 同步：车道 6 → 7（唯一协议面变更）+ `sessions/save_records` 登记 |
+| v0.1.8 | 67 | 上游放宽车道门槛（≤7 全通）：车道漂移观测、Anthropic 出错即终止、缓存用量三处补齐、会话粘性落到账号 |
+| v0.1.9 | 68 | issue #5 上下文/失忆：`/responses` 续接字段不再静默忽略（显式 400）+ 历史规模可观测 + 多轮/工具历史回归用例 |
+| v0.1.10 | 69 | 客户端 0.3.42 同步复核：wire protocol **零变更**（车道仍 7），只跟心跳 `v=` + issue #5 白盒再确认 |
+| v0.1.11 | 70 | 模型目录复核（27 个零差异）+ 修内置兜底条目的过期 `contextWindow`（1,048,576 → 320,000） |
+| v0.1.12 | 71–76 | `/responses` 历史暂存（伺服端配对 / 预算 / 去重）、结构治理 PR-2~PR-4（`guard` / `observe` / `poolsvc`）、`/admin/api/state` 三层退役、客户端二次复核与 README 过期提示清理 |
 | v0.1.1 | 51（发版）、52 | 全扫落地（竞态 / 日志完整性 / 落盘可观测 / 8 项优化）+ 项目级 pi-lens 配置 |
 | v0.1.0 | 49、50（发版）；45–48 是发版前的控制台修复 | P0/P1/P2 一轮落地 + 概览 KPI / 账号脱敏 / 版本检查；控制台 4 处裸 `refresh()`、行内菜单、登录页、侧边栏 |
 
@@ -49,6 +55,17 @@
 - 63 文档整理（验收基线重算、索引加状态列）+ 仓库清理（dist 旧产物、根目录陈旧状态文件）+ v0.1.5 发版
 - 64 客户端 0.3.37 同步：车道 5 → 6（唯一协议面变更）+ 车道探测顺序修复（v0.1.6）
 - 65 结构治理与 0.3.37 复核收尾：拆 `httpx` / `web` 包（14.6k → 7.0k 行）、`api.js` 重构、`response.output` 按 `output_index` 排序、流式出错不 flush 工具（v0.1.6）
+- 66 客户端 0.3.41 同步：车道 6 → 7（唯一协议面变更）+ 桌面端升级（v0.1.7）
+- 67 上游放宽车道门槛（≤7 全通）+ 车道漂移观测、Anthropic 出错即终止、缓存用量补齐、会话粘性（v0.1.8）
+- 68 issue #5 上下文/失忆：`/responses` 续接字段显式 400、历史规模可观测、多轮与工具历史回归（v0.1.9）
+- 69 客户端 0.3.42 同步复核：wire protocol 零变更（车道仍 7），只跟心跳 `v=`（v0.1.10）
+- 70 模型目录复核（27 个零差异）+ 内置兜底条目 `contextWindow` 1,048,576 → 320,000（v0.1.11）
+- 71 `/v1/responses` 历史暂存复核：伺服端配对、预算、去重与容量
+- 72 结构治理 PR-2：抽出 `internal/guard`（限流 / 口令退避 / CORS）
+- 73 结构治理 PR-3：抽出 `internal/observe`（指标 / 中间件）
+- 74 结构治理 PR-4：抽出 `internal/poolsvc`（号池运行时，`Server` 字段 36 → 23）
+- 75 `/admin/api/state` 三层退役：弃用指标 → `410 Gone` → 彻底删除（v0.1.12，**破坏性**）
+- 76 客户端二次复核（`latest.yml` 仍 0.3.42）+ README 移除过期 ℹ️ 提示、更新文档索引（v0.1.12）
 - 41 客户端 0.3.35 复核：协议仍未变，只跟版本号 + 模型目录漂移
 - 33 `internal/deepai` 覆盖率 56% → 92.8%（补测 + 一个 email 未 trim 的修复）
 - 32 控制台：登录链接可复制 + 主题按钮换 SVG 图标
@@ -3672,3 +3689,799 @@ go test -coverpkg=./internal/... ./...                    84.1%（基线 84.0%�
 
 覆盖率热点（未被覆盖的主要是错误分支）：`deepai/client.go`、`store/store_accounts.go`、
 `server/login.go`、`server/metrics.go`、`server/probe.go`。
+
+---
+
+## 66. 2026-11-18 复核：客户端 0.3.41（车道 6 → 7，v0.1.6+）
+
+**触发**：例行扫描。官方更新源 `latest.yml` 从 **0.3.37** 变为 **0.3.41**
+（`releaseDate` 2026-11-18T04:27Z；本机当时仍停在 0.3.37）。这次客户端真的更新了，
+按惯例拆包做 wire protocol 比对。
+
+### 66.1 结论：推理协议面只有车道一处变更
+
+下载 `DeepAI-Code-0.3.41-x64.exe`（sha512 与 `latest.yml` 一致）→ 7z 解 NSIS 的
+`$PLUGINSDIR/app-64.7z` → `resources/server.asar` → `apps/server/dist/binCli-DAkBc9bP.mjs`
+（14.8 MB），与 0.3.37 的 `binCli-BIPvs5sY.mjs` 做全量 diff。原始 diff 有 709 个 hunk，
+但绝大多数是 pnpm patch hash 与打包分块导致的标识符改号（`format$1 → format$2`）；
+归一化后约 45 处真实差异，其中：
+
+| 区域 | 0.3.41 的差异 | 是否协议面 |
+| --- | --- | --- |
+| `DEEPAI_LANE_HEADERS` | `X-DeepAI-Code-Theos: "6"` → **`"7"`** | **是（唯一一处）** |
+| `deepAIBeacon` | 未改；`v=` 仍取打包的 `version$2`（0.3.41） | 否（只是版本号跟着走） |
+| `src/deepai/signInDiagnostic.ts` | 新增登录失败分类（dns / tls / proxy / timeout …）与失败 HTML 页 | 否（登录链路） |
+| `sessions/save_records` | 新增历史增量快照端点；备份工具输入/输出各截断到 20 KB | 否（云端历史，不进推理） |
+| pi 运行时 | 仍 1.3.0；新增 `deepai-diagnostics.mjs`（stderr 崩溃上报）与 Git Bash 探测 | 否 |
+| 其它 | Sentry 用户上下文、长会话压缩预算、provider 错误边界、HTTP 观测 | 否 |
+
+端点集合（推理 / 目录 / 配额 / 签到 / 搜索）、5 个 `X-DeepAI-Code-*` 头、
+实例号粒度（每进程 `randomBytes(16).hex`）、机器指纹、签到 / beacon 形态、
+聊天请求体字段与 `/models` 解码全部未变。
+
+### 66.2 实测：0.3.41 只接受车道 7
+
+单账号、每格一次请求（2026-11-18）：
+
+| 端点 | lane 5 | lane 6 | **lane 7** | lane 8 | lane 9 / 10 |
+| --- | --- | --- | --- | --- | --- |
+| `GET /deepai_code/models` | 426 | 426 | **200** | 426 | 426 |
+| `GET /deepai_code/theos` | 426 | 426 | **200**（`lane_version: 7`） | 426 | 未测 |
+| `POST /deepai_code/chat/completions` | 未测 | 426 | **200** | 未测 | 未测 |
+
+与 0.3.37 时代不同，这次旧车道**不再被宽容**：车道 6 的目录 / 配额 / 推理全部 426
+`lane_version_unsupported`。也就是说车道 7 是硬门槛，不是“建议值”。
+
+模型目录仍是 **27 个（11 免费 / 16 付费）**，`default` 仍是 `glm-5.3-flash`；
+ID、名称、`theosPerRequest`、`maxTokens` 与 11-14 快照完全一致，唯一变化是
+`glyph-cluster` 的 `contextWindow` 从 320,000 变成 **256,000**（其余仍 320,000）。
+
+### 66.3 代码同步
+
+- `deepai.LaneVersion` `6` → `7`，`deepai.AppVersion` `0.3.37` → `0.3.41`；
+- `types.go` 登记 0.3.41 新增的 `PathSessionsSaveRecords`（`/sessions/save_records`），
+  仅用于端点清单，网关仍不实现云端会话同步；
+- 测试里的车道锚点：`TestClientSendsRequiredHeaders` 断言 `7`；
+  `internal/server/lane_test.go` 把“探测到更新车道”的场景改成 7 → 8，
+  “旧状态文件”场景改成真实的 6 → 7 升级；
+- 其余模块（请求头、机器指纹、签到、模型解析、协议翻译）无需改代码：
+  车道探测从 6 改成 7 即可，候选序列仍是“编译期车道优先 → 向上猜 → 向下兜底”。
+
+### 66.4 验证
+
+```text
+gofmt -l ./internal ./cmd ./main.go ./tasks.go ./env.go   无输出
+go vet ./...                        无输出
+go test ./... -count=1              10 个含测试的包全绿
+go test -race ./internal/deepai ./internal/server  全绿
+go test ./... -list '^Test' | grep -c  468 个顶层用例（总数仍 616）
+```
+
+### 66.5 客户端升级与清理
+
+用官方安装包静默升级本机桌面端：`0.3.37 → 0.3.41`（sha512 与 `latest.yml` 一致）。
+安装后 `DeepAI Code.exe` 文件版本 0.3.41、`resources/app.asar` 时间
+2026-11-18T12:27Z、`t3codeCommitHash` `937fcf1858f1`；`~/.deepai-code` 里的登录凭据
+与设置保留。
+
+清理了旧安装包、解包目录、`deepai-code-desktop-updater` 缓存里的 `installer.exe`，
+以及 `/f/tmp` 下残留的 0.3.41 下载/解包产物和旧网关二进制，共约 1.5 GB。
+
+### 66.6 遗留
+
+- 车道 7 的目录 `glyph-cluster` 为何单独回到 256k 未知，网关按上游原样透传，
+  上游再变时目录刷新会自动跟上；
+- 本机仍无真实进程抓包；下次可直接对比运行中的 `/theos` beacon 与包内代码。
+
+---
+
+## 67. 2026-11-19 巡检：上游放宽车道门槛 + 协议修补（v0.1.8）
+
+**触发**：例行扫描。官方更新源 `latest.yml` 仍是 **0.3.41**（`releaseDate`
+2026-11-18T04:27Z，sha512 与 §66 记录一致），本机桌面端也停在 0.3.41 ——
+**客户端没有更新**。但用单账号复跑车道矩阵时发现**上游服务端行为变了**。
+
+### 67.1 结论：车道门槛从「只接受 7」放宽为「≤7 全接受」
+
+单账号、每格一次请求（2026-11-19）：
+
+| 端点 | lane 2 | 4 | 5 | 6 | **7** | 8 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `GET /deepai_code/models` | 200 | 200 | 200 | 200 | **200** | 426 |
+| `GET /deepai_code/theos` | 200 | 200 | 200 | 200 | **200** | 426 |
+| `POST .../chat/completions` | 未测 | 未测 | 200 | 200 | **200** | 未测 |
+
+与 §66.2（0.3.41 发布当天只有 lane 7 通过）相比，硬门槛只维持了一天。其余观察：
+
+- `/theos` **无论请求发几都回 `lane_version: 7`** —— 这是服务端当前车道，
+  不是对请求车道的回显；
+- `/models` 仍强制 `Api-Key`（不带 → 401 `auth_required`），未变；
+- **车道 5 / 6 / 7 的目录逐字段一致**（27 个模型零差异，`glyph-cluster` 256k、
+  其余 320k）：0.3.37 时代的分车道上下文差异已消失；
+- 前缀缓存确实生效：同一段 2,687 token 前缀第二次调用 `cached_tokens=2560`；
+  且 `prompt_cache_key` 会**分区**缓存（换 key 立即 miss）。
+
+**对网关的影响**：编译期车道 7 仍被接受，不需要改协议面。但两件事必须记下来：
+
+1. 「旧车道一律 426」的安全网没有了 —— 发旧车道也能跑通，所以**请求成功不再
+   证明车道是对的**；
+2. 车道探测（打 `/models`）从此只能回答「这一档能用」，再也分不出当前车道，
+   也发现不了上游已经抬到 8。
+
+### 67.2 缓存用量：三处丢弃点
+
+上游的 `prompt_tokens_details.cached_tokens` 一直都有（**流式末帧也带**，不需要
+`stream_options.include_usage`；2026-11-19 实测确认），`ParseUsage` 也解析了，
+但三个出口把它丢了：
+
+| 位置 | 问题 | 处理 |
+| --- | --- | --- |
+| `gateway/responses_translate.go` | `input_tokens_details.cached_tokens` 写死 0 | 改为 `usage.CachedTokens` |
+| `server/responses_stream.go` | 同上（流式 `response.completed`） | 同上 |
+| `gateway/anthropic_translate.go` | `usage` 只有 input/output，没有缓存字段 | 新增 `AnthropicUsage`：`input_tokens` 只算未命中部分，命中量进 `cache_read_input_tokens`，并补 `cache_creation_input_tokens: 0` |
+
+Anthropic 的语义是 `input_tokens` 为「未命中缓存」的输入、命中量单列，所以这里
+对上游的 `prompt_tokens` 做减法，保证 `input + cache_read` 仍等于上下文长度。
+
+### 67.3 Anthropic 流式出错即终止
+
+`streamAnthropic` 出错时先发 `error`，之后**仍然补发 `message_delta` +
+`message_stop`**（`stop_reason` 被写成 `end_turn`）。Anthropic 的事件模型里
+`error` 是终止事件：多发的 `message_delta` 会把一次中途失败的流派告成正常结束，
+客户端可能把只到一半的工具调用当成功。现在出错分支发完 `error` 直接收尾。
+
+### 67.4 车道漂移观测（不再依赖探测）
+
+- `deepai.Client.LaneHook`：`/theos` 成功解析出 `lane_version` 时回调
+  （直连与代理桶的 Client 都挂上）；
+- `Server.noteUpstreamLane` 记下上游车道，只在数值变化时留痕；
+  `UpstreamLane()` / `LaneDrift()` 对外暴露；
+- `/health` 增 `lane` / `lane_compiled` / `lane_upstream` / `lane_drift`；
+  `/admin/api/overview` 同名字段；`/metrics` 增 `gateway_lane{source=compiled}`
+  与 `gateway_upstream_lane`；控制台「运行健康」多一张「上游车道」小卡，
+  漂移 > 0 时标黄提示升级；
+- **不自动换车道**：lane 8 的请求体形状没有白盒复核过，自动跳等于拿协议面赌。
+
+### 67.5 会话粘性真正落到账号
+
+`affinity`（`X-Session-Affinity` / `prompt_cache_key`）此前只作为请求头透传给上游，
+选号仍然只看分组。几百个号的池子里，同一会话的连续请求会落到不同账号上，而前缀
+缓存是按前缀分区的（见 §67.1 末条）—— 换号就等于每次都冷启动。
+
+| 层 | 改动 |
+| --- | --- |
+| `internal/pool` | 新增导出的 `Scheduler.Eligible`（启用 / 未拦截 / 额度未用尽 / 分组匹配），`PickFiltered` 复用它 |
+| `internal/store` | 新增 `PreferredAccount(id, group)`：一次读锁 + 单账号拷贝，不可调度时返回 nil |
+| `internal/server/sticky.go` | affinity → 账号绑定表（TTL 10 分钟、上限 2048，超限先回收过期再整表清空） |
+| `internal/server/accounts.go` | `pickFreeAccount(group, prefer)` 先试绑定号，忙/不可用静默回退 |
+| `internal/server/upstream.go` | 只在**首次尝试**用绑定；2xx 后 `bindSticky`；拦截 / 额度用尽时 `dropSticky` |
+| `internal/server/request.go` | 新增 `anthropicAffinity`：Claude Code 不发会话头，用「模型 + system + tools」的稳定哈希派生（不含 messages 正文，否则每轮都变） |
+
+粘性永远不是硬约束：绑定号并发已满、被拦、额度用尽、或超过 TTL 都会回退常规轮询。
+
+### 67.6 验证（首轮）
+
+```text
+gofmt -l ./internal ./cmd ./main.go ./tasks.go ./env.go   无输出
+go vet ./...                                              无输出
+go test ./... -count=1                                    11 个含测试的包全绿
+go test -race ./internal/server ./internal/store ./internal/pool ./internal/gateway  全绿
+node --input-type=module --check（全部 JS） + console-smoke.mjs  通过
+顶层用例 468 → 479（+11）
+```
+
+新增用例：`TestAnthropicStreamErrorOmitsTerminalEvents`、
+`TestResponsesStreamCachedTokens`、`TestAnthropicUsageCarriesCacheTokens`、
+`TestChatToAnthropicMessageCachedUsage`、`TestChatToResponsesObjectCachedTokens`、
+`TestStickyPickPrefersBoundAccount`、`TestStickyDropsOnBlockAndExpiry`、
+`TestStickyTableBounded`、`TestUpstreamLaneDrift`、`TestAnthropicAffinityDerivation`、
+`TestPreferredAccountHonorsEligibility`；`TestMetricsEndpointExposition` /
+`TestOverviewIncludesRuntimeHealth` 补了车道字段断言。
+
+### 67.7 遗留项收尾（同日）
+
+| 遗留 | 处理 |
+| --- | --- |
+| lane 8 未白盒 | **已复核到现有证据的尽头**：本机 0.3.41 `server.asar` 里只有一个车道字面量 `"X-DeepAI-Code-Theos": "7"`（无 lane 8 代码路径）；实测 lane 8 在 `/models`、`/theos`、`/chat/completions` 全部 426，伪造 `X-DeepAI-Code-Beacon: v=0.3.42` 或换 `User-Agent` 都不改变。→ lane 8 目前既不存在于客户端也不被上游接受，「漂移只告警、不自动换道」是当前唯一正确策略 |
+| affinity 只给 Anthropic 派生 | 推广成 `sessionAffinity`：OpenAI `messages` 与 Responses `instructions` / `input` 两种形状共用同一实现；chat / responses / messages 三条入口全部接上。调用方自己给的头或 `prompt_cache_key` 仍然优先 |
+| 绑定表不持久化 | 落盘到旁路文件 `<base>-sticky.json`（与主状态文件同一把主密钥封存）：进程内改动只标脏，后台 30s 与退出前各 flush 一次（无改动跳过），启动时载入并剔除过期项；`-seal` 一并封存。不塞进主文件是为了不把「内容未变则跳过」打穿（`docs/optimization-plan-r2.md` §0.4） |
+| `dist/` 残留 v0.1.7 产物 | 已清空（发版脚本打包前还会再清一次） |
+
+### 67.8 验证（收尾）
+
+```text
+gofmt -l ./internal ./cmd ./main.go ./tasks.go ./env.go   无输出
+go vet ./...                                              无输出
+go test ./... -count=1                                    11 个含测试的包全绿
+go test -race ./internal/server ./internal/store ./internal/pool ./internal/gateway  全绿
+node --input-type=module --check（全部 JS） + console-smoke.mjs  通过
+顶层用例 468 → 482（+14）
+```
+
+新增用例（共 14）：`TestAnthropicStreamErrorOmitsTerminalEvents`、
+`TestResponsesStreamCachedTokens`、`TestAnthropicUsageCarriesCacheTokens`、
+`TestChatToAnthropicMessageCachedUsage`、`TestChatToResponsesObjectCachedTokens`、
+`TestStickyPickPrefersBoundAccount`、`TestStickyDropsOnBlockAndExpiry`、
+`TestStickyTableBounded`、`TestStickyPersistsAcrossRestart`、
+`TestStickySkipsExpiredOnLoad`、`TestStickySidecarRoundTrip`、
+`TestPreferredAccountHonorsEligibility`、`TestUpstreamLaneDrift`、
+`TestSessionAffinityDerivation`；`TestMetricsEndpointExposition` /
+`TestOverviewIncludesRuntimeHealth` 补了车道字段断言。
+
+---
+
+## 68. 2026-11-19 issue #5：上下文 / 失忆（v0.1.9）
+
+**触发**：线上 issue #5（`Context/amnesia: conversation history not preserved`）。
+按“先证伪、再改代码”的顺序查了四层：客户端源码 → 网关翻译层 → 网关路由 → 上游行为。
+
+### 68.1 结论：网关是（也应该继续是）无状态代理
+
+| 层 | 证据 | 结论 |
+| --- | --- | --- |
+| 桌面端（0.3.41） | `binCli-DAkBc9bP.mjs` 全文 0 处 `previous_response_id`；4 处 `/chat/completions` 调用都是完整 `messages` 数组 | 官方客户端从不链式续接 |
+| 网关 chat / messages | 多轮历史逐条透传，只有「补形状兜底」会裁剪白名单字段（`messages` 始终保留） | 不丢历史（新增 3 个回归用例锁定） |
+| 网关 responses（合成） | `previous_response_id` / `conversation` / `item_reference` **被静默忽略** | **真 bug**：客户端以为续接成功，模型只看得到本轮 |
+| 网关 responses（透传） | `gpt-6-astra` 原样转发 | 能否续接由上游决定，未验证（见下） |
+| 上游 `/responses` | 2026-11-19 多次请求均 429 `rate_limit_exceeded`（单发 / 8s 重试） | 链式续接**无实测证据**，不能写进文档当能力 |
+
+### 68.2 修复：不再静默丢上下文
+
+- `gateway.StatefulParam(payload)` 识别三种真正携带状态的形态（空串 / null
+  视为未设置，不误伤习惯性填空的客户端）：`previous_response_id`、`conversation`、
+  `input[].type == "item_reference"`；
+- `ResponsesToChatPayload` 遇到它们直接返回 `*StatefulParamError`；
+- `/v1/responses` 合成路径映射成 **400 `unsupported_parameter`**，错误文案点名字段
+  并给出两条出路（把完整历史放进 `input` 重发 / 改用透传模型）；
+- 透传路径保持原样转发，但留一条 `WARN` 日志，便于事后判断“是不是上游没续接”；
+- 指标：`gateway_stateful_requests_total{param=…}` +
+  `gateway_stateful_rejected_total{reason="stateless_translation"}`。
+
+顺带把 `responsesInputMessages` 从 `ResponsesToChatPayload` 里抽出来（复杂度
+28 → 23），并补上默认分支的注释：`web_search_call` / `code_interpreter_call` 这类
+**输出侧**条目本来就不是对话历史，跳过它们不影响用户可见上下文。
+
+### 68.3 可观测性：区分「没发历史」与「丢了历史」
+
+请求日志新增两个**不含正文**的字段：
+
+| 字段 | 含义 | 怎么用 |
+| --- | --- | --- |
+| `messages` | 本次回喂给上游的消息条数 | 条数为 1 通常说明调用方只发了本轮（典型是想用 `previous_response_id` 续接） |
+| `system` | 是否带 system / developer 提示 | 与「上游要求桌面端形状」的 400 对照看 |
+
+控制台日志页新增「消息」列（`12 · sys` 形式，悬停显示完整说明）。JSONL /
+`/admin/api/logs` 里同名字段，便于脚本统计。
+
+### 68.4 验证
+
+```text
+gofmt / go vet / go test ./... -count=1 / -race（server,store,pool,gateway）
++ node --check（全部 JS）+ console-smoke   全绿
+顶层用例 483 → 492（+9）
+```
+
+新增用例：`TestStatefulParam`（8 个子用例，覆盖空值变体）、
+`TestResponsesToChatRejectsStateful`、`TestResponsesInputMessagesPreservesHistory`、
+`TestResponsesStatefulRejectedOnTranslatedModel`、
+`TestResponsesStatefulForwardedOnResponsesModel`、`TestChatMultiTurnHistoryPreserved`、
+`TestAnthropicMultiTurnToolsPreserved`、`TestShapeFallbackKeepsHistory`、
+`TestHistoryStats`；`TestConsoleBackendParity` 改为断言 `countCell` 契约。
+
+### 68.5 对 issue 的回应要点
+
+1. `/responses` 的 `previous_response_id` 确实没实现 —— 现在显式 400，不再假装续接；
+2. 客户端需要发完整历史（这与官方客户端行为一致），`/v1/messages`、`/chat/completions`
+   的多轮 + 工具历史逐条透传，已补回归用例；
+3. `gpt-6-astra` 的透传路径是否支持链式续接，需要上游恢复可用后实测再定
+   （当前 429）；文档已注明“未验证”，不把它当能力承诺。
+
+### 68.6 遗留
+
+- 上游 `/responses` 的 `previous_response_id` / `conversation` 行为待实测
+  （需要 `gpt-6-astra` 不再 429）；若确认支持，再把「透传 + 会话粘性同号」写进文档；
+- 若将来要支持「合成路径的链式续接」，只能由网关自己存响应 → 回放历史（需要
+  持久化 + TTL + 同号路由），本次不做：无状态契约已经能覆盖官方客户端；
+- 未知 `input` 条目类型仍按「输出侧条目」跳过（`web_search_call` 等），
+  若上游将来用条目承载上下文，需要重新评估。
+
+---
+
+## 69. 2026-11-20 客户端 0.3.42 同步复核：协议面零变更（v0.1.10）
+
+**触发**：例行扫描。官方更新源 `latest.yml` 从 **0.3.41** 跳到 **0.3.42**
+（`releaseDate` 2026-11-19T07:44:40Z，比 v0.1.9 的发版时间晚 3 分钟，
+也就是说 **v0.1.9 从未对 0.3.42 验证过**）。本机安装的仍是 0.3.41，按惯例下载解包做白盒比对。
+
+### 69.1 结论：这一版只有版本号，协议面完全没动
+
+下载 `DeepAI-Code-0.3.42-x64.exe`（489,954,768 B）→ sha512 与 `latest.yml` 逐字节一致
+（`C9vGjoOQ…`）→ 7z 解 NSIS 的 `$PLUGINSDIR/app-64.7z` → `resources/server.asar`
+→ `apps/server/dist/binCli-zM20e9Xy.mjs`（14.85 MB），与 0.3.41 的
+`binCli-DAkBc9bP.mjs` 全量 diff：**312 个 hunk / 733 增 / 483 删**。
+
+按 `//#region` 把 hunk 归到源模块后，**`src/deepai/*.ts` 协议模块 0 hunk**：
+
+| 复核项 | 0.3.41 | 0.3.42 | 判据 |
+| --- | --- | --- | --- |
+| `DEEPAI_LANE_HEADERS` | `Theos: "7"` + `Instance: randomBytes(16).hex` | **逐字未动** | 字节级 diff |
+| `/deepai_code/*` 端点集合 | 推理 / `/models` / `/theos` / 搜索 / `sessions/list`+`save_records` | **完全一致** | 端点字符串集合 diff |
+| 聊天请求体 | `model/messages/stream/store/max_completion_tokens/temperature/tools/…` | **未变**（`src/deepai/api.ts` 0 hunk） | 源码级 |
+| 5 个 `X-DeepAI-Code-*` 头 / 机器指纹 | — | **未变**（`machineId.ts` 0 hunk） | 源码级 |
+| beacon | `v=${version$2};up=…;pi=…` | 同一函数，`version$2` 现在打包成 **0.3.42** | 源码级 |
+| 内置 pi 运行时 | `@earendil-works/pi-ai 1.3.0` | **1.3.0**，`openai-completions.js` 字节级一致 | shasum |
+| `previous_response_id` / `item_reference` | 0 / 0 | **0 / 0** | 全文 grep |
+
+312 个 hunk 全在协议面之外，和 release notes 对得上：
+
+| 区域 | hunk 数 | 内容 | 是否协议面 |
+| --- | ---: | --- | --- |
+| `orchestration-v2/Orchestrator.ts` | 260 | Full access 工具调用不中断、subagent 跨模型委派（「用户点名付费模型才允许」）、`editedByAgent` / `creationSource` 来源标记 | 否 |
+| `provider-pi`（`rpc.ts` / `adapter.ts` / `mcpExtensionSource.ts`） | 13 | pi 进程退出码 143 / `0x40010004` 不再报 crash、审批摘要文案、MCP 扩展生成 | 否 |
+| `shared/`、`config.ts`、`processRunner.ts`、`vcs/`、`sourceControl/` | ~10 | 日志 / 状态目录 `chmod 0700`、`PROJECT_FOLDER_COMMANDS`（git/gh/glab…）改按绝对路径 spawn | 否 |
+| `cloud/*`、`productCapabilities.ts`、`binCli.ts` | 5 | `hostSelfUpdate` / `cliReleaseDownload` 能力开关、`boot-service` 判定、产物名 | 否 |
+| `src/http.ts` | 2 | 本地 server 的 Origin 白名单、`wsTicket` / `token` 查询参数不追踪 | 否（本地回环，不是上游） |
+| `deepai/DeepAIPiConnection.ts` | 1 | 写 pi 的 `models.json` 时 `apiKey` 改成占位符 `"$T3_DEEPAI_TOKEN"`（由 pi 进程从环境变量取） | 否（客户端内部） |
+| `deepai/DeepAIApprovalReview.ts` | 1 | 审批上下文只收真人来源的用户消息 | 否 |
+| `RunExecutionService.ts` | 1 | 新增 `EXPECTED_DEEPAI_REFUSAL` 正则，把 `theos_exhausted` / `rate_limit_exceeded` / `lane_version_unsupported` 等**预期上游拒绝**从 Sentry 上报里剔除 | 佐证（见下） |
+
+最后一条值得记：0.3.42 把 `lane_version_unsupported` 明确列为「预期内的上游拒绝」，
+说明**旧车道 426 仍是上游的标准拒绝方式**，与 §67 的车道漂移观测口径一致。
+
+### 69.2 决策：只跟心跳版本号，协议逻辑不动
+
+- `deepai.AppVersion` 0.3.41 → **0.3.42**（`/theos` 心跳 `v=` 自报；桌面端同源取自打包版本）；
+- `deepai.LaneVersion` 保持 **7**（0.3.42 仍是 `Theos: "7"`，没有抬到 8；
+  `check_in` 响应里 `lane_version < 7` 才走 legacy 分支，逻辑也未变）；
+- 端点 / 请求头 / 请求体 / 指纹 / 签到形态一律不动 —— 没有证据支持改动，
+  改了反而会与桌面端分叉。
+
+### 69.3 issue #5 的连带结论
+
+`docs/recon.md` §2.3 的判据在 0.3.42 上重跑了一遍：仍然是 **0 处 `previous_response_id`**，
+`/chat/completions` 的 4 个调用点没动，pi 运行时的 `openai-completions.js` 字节级一致。
+→ 「客户端每轮发完整历史、网关是无状态代理」这个契约在 0.3.42 上没有变化，
+v0.1.9 的修法（合成路径 400 `unsupported_parameter` + `messages`/`system` 观测）继续有效。
+上游 `/responses` 的链式续接**仍无实测**（`gpt-6-astra` 依旧 429），维持「未验证」措辞。
+
+### 69.4 验证
+
+```text
+gofmt / go vet / go build ./... / go test ./... -count=1
++ node --check（全部 JS）+ console-smoke
+```
+
+改动面只有常量 + 注释 + 文档（无逻辑改动），用例数不变（492）。
+
+### 69.5 遗留
+
+- 0.3.42 起客户端进入「功能迭代」节奏（Full access / subagent），协议面可能继续不动，
+  但**每次发版仍要复核 `DEEPAI_LANE_HEADERS` 与端点集合**这两处，其余可只看 hunk 归属；
+- 车道 8 仍是黑盒：`/theos` 的 `lane_version` 是目前唯一能发现上游抬车道的信号；
+- 上游 `/responses` 链式续接待 `gpt-6-astra` 恢复后实测（同 §68.6）。
+
+---
+
+## 70. 2026-11-20 模型目录复核 + 兜底条目修正（v0.1.11）
+
+**触发**：客户端升到 0.3.42 后顺手核对「文档里的模型表还准不准」。用桌面端凭据直打
+`GET https://api.deepai.org/deepai_code/models`（`Api-Key` + `Theos: 7` + `Instance`），
+拿到 27 个条目，与 README 的模型表做**逐字段**比对。
+
+### 70.1 结论：文档准确，只有一处代码里的过期值
+
+| 检查项 | 结果 |
+| --- | --- |
+| 模型数量 / 免费·付费比 | 27 / 11·16 —— 与 README 一致 |
+| ID / 名称 / `contextWindow` / `maxTokens` / `theosPerRequest` | 27 条**逐字段零差异**（`default` 仍 `glm-5.3-flash`） |
+| 纯文本模型清单 | `deepai-cyber` / `glm-5.3` / `glyph-cluster` / `solar-mini-4` / `minimax-m3` —— 与 README 一致 |
+| `api: openai-responses` | 仅 `gpt-6-astra` —— 一致 |
+| `theosPerSecond`（按秒计费） | 仍未下发 —— 一致 |
+| 字段并集 | 仍是 `id,name,reasoning,input,contextWindow,maxTokens,premier,theosPerRequest,api`，无新增字段 |
+| 内置别名数量 | 13 个，全部指向默认免费模型 —— 与 README 一致 |
+| **内置兜底条目 `deepai.DefaultModelEntry()`** | ❌ `contextWindow: 1,048,576`，线上是 **320,000** |
+
+只有最后一行是错的。兜底条目用在「首次启动还没拉到目录」与「目录刷新失败」两种情形：
+`/v1/models` 此时只回这一条，客户端会按它算上下文预算 —— 写 1M 就是让客户端组一个
+远超上游上限（320k）的请求，最后被上游拒。§39 当时只修了 README 的表，漏了代码。
+
+### 70.2 改动
+
+- `internal/deepai/types.go`：`DefaultModelEntry()` 的 `ContextWindow` 1,048,576 → **320,000**，
+  补 `TheosPerRequest: "0"`（线上免费），注释写清字段来源日期与「值必须与上游一致」的理由；
+- `internal/deepai/types_test.go`：`TestDefaultModelEntry` 从「大于 0」改为**锁死线上值**
+  （ctx 320,000 / maxTokens 131,072 / theos `"0"`），下次上游变动会在测试里炸出来；
+- `README.md`：模型表补「2026-11-20 复核逐字段零差异」、启动日志示例的「18 个模型」改 27、
+  新增一条「内置兜底条目与线上对齐」的说明；
+- `docs/recon.md` §2：补 2026-11-20 目录复核段（27 条逐字段一致、字段并集未变）；
+- `docs/model-fingerprint-2026-11-10.md`：注明目录自 11-14 起未变，遗漏的 6 个模型范围没变。
+
+### 70.3 验证
+
+```text
+gofmt / go vet / go build ./... / go test ./... -count=1
++ node --check（全部 JS）
+```
+
+`TestDefaultModelEntry` 改为值断言后仍绿；顶层用例 492 → 492（改断言，不加用例）。
+
+### 70.4 遗留
+
+- `gpt-oss-120b` 仍由客户端主动过滤、网关不展示（上游目录里本来也没有）；
+- `crouton-alpha` 已下线，只保留在 §40 / `docs/lessons.md` 的历史记录里；
+- 6 个 11-14 新增的模型仍无指纹实测（要花 Theos，非必要不做）。
+
+---
+
+## 71. 2026-11-20 `/v1/responses` 歷史暫存复核：配對、預算、去重與容量
+
+一輪針對「伺服端歷史暫存」（§68 引入、`response_history.go`）的复核。
+七處問題全部有可重現的失敗形態，逐條記下根因 → 決策 → 驗證。
+
+### 71.1 根因與決策
+
+| # | 根因 | 失敗形態 | 決策 |
+| --- | --- | --- | --- |
+| 1 | 裁剪按 item 邊界切，`function_call` 與 `function_call_output` 被分到兩側 | gateway 把 output 翻成 `role:tool`，上游要求它緊跟帶 `tool_calls` 的 assistant → **歷史一被裁，之後每輪 400** | 新增 `dropOrphanToolOutputs`：位置掃描（訊息項即重置 active 集合），不是全局 id 集合——插入的說明訊息同樣打斷鏈路 |
+| 2 | 說明訊息自身 token 未計入預算 | 裁剪結果剛好超限 → `replay` 誤判「壓不下去」，把本來能續接的請求回 400 | `avail = budget - itemApproxTokens(marker)`，先扣再選尾段 |
+| 3 | `tools` 定義未計入上下文 | 幾十個 function schema 低估幾千 token，剛好超限的請求穿過檢查、由上游靜默截斷 | `fixedTokens = instructions + tools`，錯誤訊息改稱「請求（歷史 + 工具定義）」 |
+| 4 | `max_output_tokens` 沒有預留輸出預算 | 歷史貼著上限時上游只能截斷歷史（失憶）或超額 | `total + reserve > limit` 即 400，訊息註明「已為 max_output_tokens 預留 N tokens」；`truncation:auto` 的預算同步扣除 |
+| 5 | 客戶端同時送 `previous_response_id` 與完整 `input` 時，基底被拼兩次 | token 直接翻倍，更快撞上限 | `hasHistoryPrefix` 逐項深比較：`input` 以重組出的歷史為前綴就不再補基底（保守：只認「完整重送」，部分重送仍會重複） |
+| 6 | `effectiveContextWindow` 每輪重放都 `json.Unmarshal` 一次環境變數 | 純 CPU 浪費在熱路徑上 | 以「原始字串」為 key 的單槽緩存：改環境變數（含 `t.Setenv`）自動失效，不需要重啟 |
+| 7 | 每輪都存整條歷史（O(輪數²)），容量用 `json.Marshal` 量體積 | 長對話記憶體平方增長；每次寫入多一次全量序列化 | 只存增量 + `parent` 鏈；每 8 輪存一份檢查點。容量改為結構走訪估算（`jsonBytesOf`，不分配、不序列化） |
+
+第 7 條的取捨寫清楚：
+
+- **記憶體**：鏈長 n 時舊版約 n²/2 份 item，現在約 n 份增量 + n²/(2×8) 份檢查點 ≈ 16 倍改善；
+- **韌性**：檢查點就是為了「父條目被淘汰」——`chain` 遇到帶快照的條目即停，不再因更早的祖先被淘汰而判定斷鏈；
+- **明確失敗**：鏈上真的缺一環（TTL/淘汰且無檢查點）時回 400 `unsupported_parameter`，**不送半截歷史**——後者正是「靜默失憶」。
+
+### 71.2 順帶修掉的熱路徑問題
+
+- `get()` 的深拷貝移到鎖外：一條 300k token 的歷史 JSON 往返要幾十毫秒，放在全局鎖裡會讓所有 `/v1/responses` 排隊（條目發布後不再改寫，鎖外讀安全）；
+- `replay` 只算一遍 `itemCosts` 傳給 `truncateHistoryWithCosts`，不再對同一批 item 重複序列化。
+
+### 71.3 驗證
+
+```text
+gofmt -l . ; go vet ./... ; go build ./...
+go test -count=1 ./...                       # 12 个包全绿
+go test -race -count=1 ./internal/server ./internal/deepai ./internal/store
+```
+
+新增 9 个顶层用例，其中 6 个在旧实现上会红：
+
+- `TestTruncateHistoryDropsOrphanToolOutputs`（孤兒 output 被丟 / 成對調用不被誤刪）
+- `TestTruncateHistoryMarkerFitsBudget`
+- `TestResponsesReplayCountsTools`（tools 挤破窗口 → 400）
+- `TestResponsesFullInputWithPrevIDNotDuplicated`（暗號只出現一次）
+- `TestResponsesReplayReservesMaxOutputTokens`（400 訊息含 `max_output_tokens`，對照組 200）
+- `TestResponsesHistoryChainCompact`（5 輪 × 2k filler：佔用 < 16k，全量存會 ~30k）
+- `TestResponsesHistoryCheckpointSurvivesEviction`（摘掉最舊三條仍可續接）
+- `TestResponsesHistoryBrokenChainIsExplicit`（鏈斷 → 400 且不上游）
+- `TestContextWindowOverridesCached`（同一份環境變數命中緩存，改值即失效）
+
+### 71.4 遗留
+
+- `max_output_tokens` 只在重放路径检查（合成路径目前没有统一的窗口检查点）。
+- `remember` 仍对 output 做一次深拷贝（回應物件可能被后续改写），这一份保留。
+
+### 71.5 结构搬迁（PR-1）：`internal/respstate`
+
+按 `docs/server-split-plan.md` 的 PR-1 把整块歷史暫存搬出 `internal/server`：
+
+| 项 | 内容 |
+| --- | --- |
+| 搬出 | `internal/server/response_history.go`（474 行）→ `internal/respstate/history.go`（774 行，含新逻辑） |
+| 导出面 | `Store` / `Turn` / `Outcome`（`OK` `NotFound` `TooLong`）/ `New` / `NewFromEnv` / `Remember` / `Replay` / `Len` / `InputItems` / `EffectiveContextWindow` / `ItemApproxTokens` |
+| 依赖方向 | `respstate → gateway`（仅取值工具），**不依赖 `internal/server`**，可脱离 HTTP 单测 |
+| 测试拆分 | 单元用例（裁剪 / 估算 / 窗口 / 容量 / 链与检查点）搬进 `internal/respstate/history_test.go`（15 个）；HTTP 端到端留在 `internal/server`（11 个） |
+| 内核变化 | `Server.history *respstate.Store`；`responses.go` 只改 6 处调用；`accounts.go` 无改动 |
+
+搬迁时顺手删掉两个因重构而**再无生产调用**的符号：`Store.get`（`Replay` 改走 `chain` 后无人使用）
+与 `truncateHistory` 薄包装（合并进 `truncateHistoryWithCosts`），避免留下“只有测试在用”的死代码。
+
+数字：`internal/server` 非测试代码 8,008 → **7,557** 行（文件 40 → 39）；
+`internal/respstate` 774 + 525 行测试。
+
+### 71.6 部分重送的去重（后缀重叠）
+
+上一轮只处理“完整重送”：客户只带**歷史尾段** + `previous_response_id` 时仍会重复。
+现在改为按**最大后缀重叠**去重（`historyOverlap`）：
+
+- 重疊必須貼住 base 末尾（`k = len(base)-j` 且 `k <= len(in)`），因此不会把「新回合里重复的同一句话」误判为重送：
+  base 末项是上一轮助手输出、in 首项是 user 讯息，`k=1` 误配窗口极窄；
+- 由前往后扫，第一个命中即最大重疊（完整重送 `k=len(base)` 与前缀判定等价）；
+- 成本两道限：首项比对最多走一遍 base，整段验证最多 16 次；
+- 合并式统一为 `base[:len(base)-k] + in`（`k=0` 时恰好是完整基底）。
+
+用例：`TestHistoryOverlap`（完整/部分/新回合/重复文字不误判）、
+`TestHistoryReplayDedupesResentHistory`（三种输入都得到 5 项，而不是 7 项）、
+`TestResponsesPartialInputWithPrevIDNotDuplicated`（HTTP 级：暗号保留且 “turn 2” 只出现一次）。
+
+---
+
+## 72. 2026-11-20 结构治理 PR-2：抽出 `internal/guard`（限流 / 口令退避 / CORS）
+
+按 `docs/server-split-plan.md` 的 PR-2 落地。与 §71 不同，这一条不是修 bug，
+是**把准入层从 `internal/server` 里切出去**——它是包内少数「只依赖 Store 设置 +
+标准库」的接缝，也是唯一能被单独压测/单测的安全层。
+
+### 72.1 边界与导出面
+
+| 新包文件 | 行 | 导出 | 来源 |
+| --- | --- | --- | --- |
+| `guard/limiter.go` | 193 | `Limiter` / `NewLimiter` / `Allow` / `Gate` / `RateConfig` / `KeyID` / `WriteRateLimited` | `server/ratelimit.go` |
+| `guard/adminauth.go` | 142 | `AdminGuard` / `NewAdminGuard` / `Blocked` / `Failure` / `Success` / `BackoffPolicy` / `DefaultBackoffPolicy` / `ClientIP` / `FreeAttempts` | `server/authguard.go` |
+| `guard/cors.go` | 91 | `Origin` / `InAllowList` / `WriteHeaders` / `IsLoopbackAddr` | `server/cors.go` |
+
+判定逻辑全部变成**纯函数/纯内存态**：设置由调用方传入（`RateConfig`、`configured`
+字符串、`BackoffPolicy`），包内不读 `store.Store`，也不碰路由表。
+
+### 72.2 保留的胶水（server 侧 104 行）
+
+| 文件 | 行 | 职责 |
+| --- | --- | --- |
+| `server/ratelimit.go` | 21 | `rateLimitGate(key)`：把设置翻译成 `guard.RateConfig` 后调 `Limiter.Gate` |
+| `server/authguard.go` | 57 | `adminGuardPolicy`（注入 `adminGuardBase`）/ `checkAdminThrottle`（429 + `Retry-After`）/ 两个 `noteAdminAuth*`（失败日志） |
+| `server/cors.go` | 26 | `withCORS` 中间件：取设置 → `guard.Origin` → `guard.WriteHeaders` |
+
+顺带消掉一处重复实现：`adminSameOrigin` 里手写的「逗号分隔允许列表 + 丢通配符」循环
+与 `corsOrigin` 里的完全同构，现在统一走 `guard.InAllowList`。
+`observability.go` 的访问日志把 `clientIP` 换成 `guard.ClientIP`。
+
+**行为零变更**：CORS 响应头顺序与取值、429 文案与 `Retry-After`（≥1s）、退避曲线
+（5 次免费 → base×2ⁿ 封顶 30s）、`adminGuardBase` 测试注入点全部保持原样。
+
+### 72.3 测试迁移
+
+- 搬进 `internal/guard`：`TestTokenBucketRefill`、`TestTokenBucketSweepsIdleEntries`
+  （改造为公开 API：`NewLimiter` / `Allow`），另新增 11 个单测 —— 令牌桶补充、
+  `Gate` 并发闸门、429 头与响应体、退避曲线与封顶、按 IP 隔离、`BackoffPolicy`
+  归一化、`ClientIP`、CORS 默认/列表/通配符/响应头、回环判定；
+- **原地不动**：`TestRateLimitPerKey`、`TestKeyConcurrencyLimit`、`TestRateLimitSettingsRoundTrip`、
+  `TestAdminPasswordThrottle*`、`TestCORSDefaultsToLoopback` —— 它们是 HTTP 级行为门槛，
+  拆包不该顺带改断言。
+
+### 72.4 验证与数字
+
+```text
+gofmt -l . ; go vet ./... ; go build ./...
+go test -count=1 ./...                    # 12 个包全绿（新增 internal/guard）
+go test -race -count=1 ./internal/guard ./internal/server
+```
+
+| 指标 | 变化 |
+| --- | --- |
+| `internal/server` 非测试 | 7,557 → **7,226** 行（-331） |
+| `internal/server` 文件 | 39（删 3 个，新增 3 个胶水） |
+| `internal/guard` | 426 行 + 311 行测试（13 个用例） |
+| 反向依赖 | 无（`go list -deps ./internal/guard` 不含 `internal/server`） |
+
+### 72.5 遗留
+
+- `internal/httpx` 直接依赖 `internal/store`（为读设置？），所以 `guard` 的**传递**依赖里
+  仍然会出现 `store`/`pool`；直接依赖只有 `deepai` + `httpx`。这层隐式依赖值得单独收一次。
+- 下一步按计划是 **PR-3 `internal/observe`**（`metrics.go` + `observability.go`，688 行），
+  前置动作是先把 `withObservability` / `handleMetrics` / `poolSnapshot` 改成窄接口。
+
+---
+
+## 73. 2026-11-20 结构治理 PR-3：抽出 `internal/observe`（指标 / 中间件）
+
+按 `docs/server-split-plan.md` 的 PR-3 落地。原计划的前置动作是「把
+`withObservability` / `handleMetrics` / `poolSnapshot` 改成窄接口」，实际落地时
+发现**比接口更窄的做法**就够：
+
+- `Middleware(m *Metrics, next http.Handler)` —— 中间件只依赖 `*Metrics`，连 Server 都不需要；
+- `handleMetrics` 需要的号池/日志/车道数字用**值结构** `PromExtra` 传进去，
+  比定义 `LaneSource` / `PoolSnapshotSource` 两个接口更窄（不用 mock、不暴露方法集）；
+- `poolSnapshot()` 仍留在 server（要 `store` + 额度策略），返回 `observe.PoolSnapshot`。
+
+### 73.1 边界与文件
+
+| 新包文件 | 行 | 内容 |
+| --- | --- | --- |
+| `observe/metrics.go` | 379 | `Metrics`（计数器 + 定桶直方图）、`Snapshot` / `MetricsSnapshot`、`HistogramView`、`QuantileMs` / `LatencySummary`、`EndpointLabel` |
+| `observe/exposition.go` | 155 | `WritePrometheus`（Prometheus 文本格式）、`PromExtra`、`PoolSnapshot`、直方图序列化 |
+| `observe/middleware.go` | 146 | request id、访问日志、`Middleware`、`IsStaticAsset` |
+
+server 只剩 **80 行**装配：`poolSnapshot()`（返回 `observe.PoolSnapshot`）与
+`handleMetrics`（方法校验 + 组装 `PromExtra` + 写响应头）。
+
+**直接依赖只有标准库 + `internal/guard`（取来源 IP）+ `internal/logx`**：
+`observe` 不认识 store / 号池 / 协议层，`go list -deps` 确认无反向依赖。
+
+### 73.2 顺带清掉的死代码
+
+`metrics.upstreamLane` 是「只在 `noteUpstreamLane` 里写、从未被读」的镜像：
+`/metrics` 的 `gateway_upstream_lane` 一直取的是 `Server.UpstreamLane()`（权威值）。
+搬迁时删掉这个字段与 `SetUpstreamLane`，`/metrics` 改由 `PromExtra.UpstreamLane`
+取值——口径不变，少一份会漂移的重复状态。
+
+### 73.3 测试迁移
+
+- 搬进 `internal/observe`：`TestHistQuantile`、`TestMetricsRecordsExtras`、
+  `TestStaticAssetsSkipAccessLog`（改名为 `TestIsStaticAsset`）；
+- 新增：`TestMetricsStatefulAndCheckIn`（状态字段与签到口径）、
+  `TestWritePrometheusContract`（指标名 / 标签 / `+Inf` 桶 / 取值，逐条锁定）、
+  `TestEndpointLabel`；
+- server 侧：`s.metrics.statefulReject.Load()` 这类**内部字段访问**改成
+  `s.metrics.Snapshot().Stateful["rejected"]`；签到计数改用 `ObserveCheckIn` 驱动；
+  测试里用的 `itoa64` 换成 `strconv.Itoa`。
+
+### 73.4 验证与数字
+
+```text
+gofmt -l . ; go vet ./... ; go build ./...
+go test -count=1 ./...                       # 13 个包全绿（新增 internal/observe）
+go test -race -count=1 ./internal/observe ./internal/server
+```
+
+| 指标 | 变化 |
+| --- | --- |
+| `internal/server` 非测试 | 7,226 → **6,607** 行（-619） |
+| `internal/server` 文件 | 39 → **38**（`metrics.go` 整文件删除，`observability.go` 变装配层） |
+| `internal/observe` | 680 行 + 178 行测试（6 个用例） |
+
+### 73.5 遗留
+
+- `handleMetrics` 仍直接读 `s.Store.Stats()` / `s.Store.Keys()`：这三个数字很小，
+  留在装配层比再抽一层值类型更划算。
+- 下一步是 **PR-4 `internal/poolsvc`**（`probe.go` / `enroll.go` / `sticky.go` /
+  `proxypool.go` / `accounts.go` / `warmup.go`，约 1,012 行），它要搬并发原语，
+  以 `-race` 为硬门槛。
+
+---
+
+## 74. 2026-11-20 结构治理 PR-4：抽出 `internal/poolsvc`（号池运行时）
+
+按 `docs/server-split-plan.md` 的 PR-4 落地，这是四步里唯一搬运**并发原语**的一步。
+
+### 74.1 边界：谁搬走、谁留下
+
+| 搬进 `internal/poolsvc` | 行 | 留在 `internal/server` |
+| --- | --- | --- |
+| `slots.go` 在途槽位（in-flight / Pick / 响应体归还） | 133 | `pool_errors.go`：`errAllAccountsBusy` / `blockedReason` / `noAccountError` —— 这是**响应文案**，不是调度 |
+| `probe.go` 配额探测（去重 / 批量 / 按需 / 后台守护） | 396 | `quotaStaleAfter` 常量（调度与探测共用的阈值口径） |
+| `enroll.go` 入池 / 邮箱验证 / 0 额度复探 | 158 | `holdResponseBody`（HTTP 空闲超时） |
+| `sticky.go` 会话粘性（affinity → 账号） | 154 | `clientFor`（按代理缓存的客户端工厂，**注入**给 poolsvc） |
+| `proxypool.go` 入池代理池 | 38 | `lifecycle.Close`（编排：停后台 → flush 绑定 → 关空闲连接） |
+| `warmup.go` 启动预热 | 76 | — |
+| `poolsvc.go` Service / Config / Close / Wait | 168 | — |
+
+`Service` 的注入面只有三项：
+
+```go
+type Config struct {
+    Store     *store.Store
+    ClientFor func(*deepai.Account) *deepai.Client // 含代理缓存
+    Save      func() error                         // 落盘（server 决定日志策略）
+}
+```
+
+原计划里 `Pick` 之类的「能力函数」最终没做成回调——它们本来就是 poolsvc 自己的
+状态操作，做了反而是把内部逻辑倒着注入回去。
+
+### 74.2 状态迁移
+
+`Server` 从 36 个扁平字段降到 **23 个**：`inflightMu/inflight`、`probeMu/probing/probeSem`、
+`quotaWG`、`stopCh/stopOnce`、`stickyMu/sticky/stickyDirty`、`quotaReprobeDelays`、
+`enrollPoolOnce/enrollPool` 全部搬进 `Service`，`Server` 只保留 `Pool *poolsvc.Service`。
+
+顺带把 `sleepOrStop` / `stopped()` 一起搬走（它们只服务入池复探的退避睡眠），
+`Server.Close` 变成三步编排：`Pool.Close(ctx)` → `Pool.FlushSticky()` → `closeIdleConnections()`。
+
+### 74.3 对外可见的注入点
+
+| 符号 | 用途 |
+| --- | --- |
+| `QuotaGuardInterval` / `QuotaGuardBatch` | 后台守护节奏（`tasks.go` 直接用） |
+| `GuardStaleAfter` / `MaxCheckinBatch` | 过旧阈值 / 单批探测上限 |
+| `MaxInFlightPerAccount` / `StickyMax` / `StickyTTL` | 容量与 TTL（控制台与测试引用） |
+| `NeedsRefresh` / `SortByDue` / `PositiveQuota` / `AllowanceFromEnroll` | 纯函数，`/health`、overview 与入池共用同一口径 |
+| `Probing()` / `InFlight()` / `Bindings()` / `Wait()` | 观测与测试收尾（替代直接摸 `probeMu` / `quotaWG`） |
+| `SetQuotaReprobeDelays` | 测试注入毫秒级退避；排查时可临时关掉入池后复探 |
+
+### 74.4 测试迁移
+
+- 机械替换：`s.pickFreeAccount/acquireAccount/releaseAccount/stickyAccount/bindSticky/
+  dropSticky/FlushSticky/probeBatch/probeAsync/claimProbe/Wait…` → `s.Pool.*`；
+- **内部字段访问**改成公开观测口：`len(s.probing)` → `s.Pool.Probing()`、
+  `s.inflightMu/inflight` → `s.Pool.InFlight()`、`s.StickyBindings()` → `s.Pool.Bindings()`；
+- 白盒用例搬进 `internal/poolsvc/poolsvc_test.go`：`TestCloseWaitsForProbes`（用
+  `quotaWG` 登记一笔假工作）、`TestCloseInterruptsBackoff`（1 小时退避被打断）、
+  `TestStickyExpired`（过期绑定顺手清除）；
+- 「载入时剔除过期绑定」仍留在 server（它通过旁路文件构造数据），改用
+  `poolsvc.StickyTTL` 生成过期时间戳。
+
+### 74.5 验证与数字
+
+```text
+gofmt -l . ; go vet ./... ; go build ./...
+go test -count=1 ./...                     # 14 个包全绿（新增 internal/poolsvc）
+go test -race -count=1 ./internal/poolsvc ./internal/server
+```
+
+| 指标 | 变化 |
+| --- | --- |
+| `internal/server` 非测试 | 6,607 → **5,610** 行（-997） |
+| `internal/server` 文件 | 38 → **33**（6 个整文件搬走，新增 1 个错误文案文件） |
+| `Server` 字段 | 36 → **23** |
+| `internal/poolsvc` | 1,123 行 + 68 行白盒测试 |
+| 反向依赖 | 无（`go list -deps ./internal/poolsvc` 不含 `internal/server`） |
+
+### 74.6 遗留
+
+- `admissionWait`（全忙排队上限）仍在 server：它和 HTTP 超时预算绑在一起，属准入策略。
+- `clientFor` 的代理缓存仍在 server：poolsvc 只需要一个「按出口取客户端」的函数值。
+- PR-5（`relay` / `adminapi`）按计划**暂缓**：拆完的收益主要是包边界好看，
+  代价是给 handler 造一个 30+ 字段的 Config。
+
+## 75. 2026-11-20 `/admin/api/state` 三层退役收尾（v0.1.12）
+
+### 75.1 事实基线
+
+`GET /admin/api/state` 曾在一次响应里拍平下发全部账号（603 号约 430KB），
+控制台早已改用 `/admin/api/overview`（元信息）+ `/admin/api/accounts`（分页），
+前端对它 **0 引用**。响应头自 v0.1.4 起就带 `Deprecation` / `Sunset` /
+`Link(successor-version)`，Sunset 日期定为 **2026-05-20**。
+
+本次复核时点 2026-11-20：Sunset 已过去 6 个月，具备走完 RFC 8594 剩余两步的条件。
+
+### 75.2 三个阶段
+
+| 阶段 | 动作 | 目的 |
+| --- | --- | --- |
+| P1 | 10 处「借端点」的测试改走替代端点；新增 `gateway_deprecated_endpoint_total{path="/admin/api/state"}`；README 补「已弃用的端点」迁移小节 | 让 P3 变成纯删除，并给「还有没有人在用」一个可查询的信号 |
+| P2 | 处理器改为 `410 Gone` + 保留 `Sunset`/`Link` 头 + `type=endpoint_removed` 错误信封 | 明确失败而不是静默继续；404 会被误认为拼错路径 |
+| P3 | 删除路由 / 处理器 / `stateSunset` / 410 契约用例 / 弃用计数指标；README 改为「已下线」 | 彻底移除 |
+
+### 75.3 为什么 P2 用 410 而不是继续返回数据
+
+继续返回数据会让调用方一直不知道需要迁移，而该端点的成本随号池规模线性增长
+（429KB / 603 号，且是同步深拷贝全池）。410 同时说明了「曾经存在」与
+「迁移去哪」，比 404 更可行动。
+
+### 75.4 遗留
+
+- `docs/optimization-plan-r2.md` §P0-2 仍按「旧端点保留兼容」描述，属历史记录，
+  保留原文（该文记录的是当时的决策）。
+- `internal/server/admin_api.go` 的包注释仍提到拆分的动机是「state 一次下发
+  全部账号」，属历史说明，保留。
+
+## 76. 2026-11-20 客户端二次复核 + README 过期提示清理（v0.1.12）
+
+### 76.1 复核结论：客户端没有更新
+
+| 复核项 | 值 | 与同日上一轮（0.3.42 复核） |
+| --- | --- | --- |
+| `latest.yml` `version` | **0.3.42** | 一致 |
+| `latest.yml` `releaseDate` | 2026-11-19T07:44:40.553Z | 一致 |
+| x64 `sha512` / `size` | `C9vGjoOQ…` / 489,954,768 B | 一致 |
+| arm64 `sha512` / `size` | `hry2CPlP…` / 469,900,760 B | 一致（本轮补记 arm64） |
+| 本机 `ProductVersion` | 0.3.42.0 | 一致 |
+
+更新源地址来自本机客户端 `resources/app-update.yml`（`provider: generic` →
+`https://downloads.deepai.org/deepai-code/releases`）。判据只有 `latest.yml`：
+下载页与更新源会不同步（2026-11-10 那次下载页还指着 0.3.30，更新源已是 0.3.32）。
+
+→ `deepai.LaneVersion` 保持 `"7"`、`deepai.AppVersion` 保持 `"0.3.42"`，**代码零改动**。
+需要留意的仍是车道：门槛是服务端行为，`/models` 探测已经分辨不出当前车道
+（2026-11-19 起 ≤7 全通过），只能看 `/theos` 回的 `lane_version`。
+
+### 76.2 为什么删掉 README 简介下方那段 ℹ️
+
+原文提示 `0.3.19` 曾把推理收窄到 Google/Apple 登录的账号。它记的是**已经被推翻的
+临时告警**（2026-11-09 复测解除），却摆在项目简介正下方 —— 读者第一眼看到的是
+一个过期异常，而不是网关能做什么。删除不丢信息，事实与处置仍有两处落点：
+
+- `docs/recon.md` §4.1 —— 原始观察、复现命令与解除复测；
+- README §1.1「账号策略」行与 §七「已知限制」—— 保留 `403 social_login_required`
+  作为运行时行为（网关仍把它当 `blocked` 终态，策略再收紧无需改代码）。
+
+### 76.3 顺带修掉的陈旧索引
+
+README §十一「文档索引」里 `docs/recon.md` 的维护状态写着「最近复核 2026-11-14」，
+实际已复核到 2026-11-20（0.3.42 两轮），本轮同步更新；同日把索引表与实际条目
+对齐（补 71–76 行与 bullet 列表里的 69–76）。

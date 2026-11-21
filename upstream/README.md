@@ -16,15 +16,10 @@
 
 </div>
 
-> ℹ️ 0.3.19 曾把 DeepAI Code 推理收窄到 **Google/Apple 登录**的账号（邮箱密码号
-> `403 social_login_required`）。**2026-11-09 复测该限制已解除**：邮箱注册号在
-> `/theos` 与推理端点均恢复 200（见 `docs/recon.md` §4.1）。网关仍保留 `blocked`
-> 终态处理，策略若再次收紧无需改代码。
-
 | 能力 | 说明 |
 | --- | --- |
 | 双协议 | OpenAI `/v1/chat/completions`、`/v1/responses`；Anthropic `/v1/messages` |
-| 协议对齐 | 车道 6 + `X-DeepAI-Code-Instance` + `/theos` 签到；区分 `social_login_required` / `machine_required` / `lane_version_unsupported` |
+| 协议对齐 | 车道 7 + `X-DeepAI-Code-Instance` + `/theos` 签到；区分 `social_login_required` / `machine_required` / `lane_version_unsupported` |
 | 号池治理 | 分组轮询、失败换号、容量退避、按账号配额调度、策略拦截自动跳过 |
 | 账号接入 | 浏览器登录（Google / Apple / 邮箱密码）、桌面端凭据导入、手工 API Key；入池自动分配机器指纹与代理 |
 | 控制台 | 单页内嵌 UI：账号 / 密钥 / 日志 / 统计 / 设置 |
@@ -47,9 +42,10 @@
 
 ## 一、逆向结论
 
-DeepAI Code 是 **Electron + 本地 t3code server** 架构（应用版本 **0.3.37**，车道 6；
-0.3.20 → 0.3.30 → 0.3.32 → 0.3.35 → 0.3.36 → 0.3.37 的 wire protocol 逐项比对：
-**0.3.37 只抬了车道（5 → 6），其余请求头 / 指纹 / 签到 / 端点未变**）。
+DeepAI Code 是 **Electron + 本地 t3code server** 架构（应用版本 **0.3.42**，车道 7；
+0.3.20 → 0.3.30 → 0.3.32 → 0.3.35 → 0.3.36 → 0.3.37 → 0.3.41 → 0.3.42 的 wire protocol 逐项比对：
+**0.3.41 只抬了车道（6 → 7），0.3.42 在协议面上零变更（车道仍 7），其余请求头 / 指纹 / 签到 / 推理端点未变**；
+新增的 `sessions/save_records` 只服务历史备份，不进推理链路）。
 真正干活的不是桌面壳，而是 `resources/server.asar` 里的 t3code server；
 它把上游能力封装成本地回环 HTTP 服务，再交给 Pi（编码 agent）调用。
 
@@ -69,11 +65,11 @@ DeepAI Code 是 **Electron + 本地 t3code server** 架构（应用版本 **0.3.
 | 语音转写 | `POST https://api.deepai.org/speech_to_text`（字段 `voiceRecording`） |
 | 联网搜索 | `POST https://api.deepai.org/deepai_code/web_search` |
 | **鉴权** | 请求头 `Api-Key: <apiKey>`（不是 `Authorization`） |
-| 协议头 | `X-DeepAI-Code-Theos: 6`（计费车道版本；0.3.37 起为 6，推理端点 5 / 6 都接受，`/models` 放宽到 1–6，见 `docs/recon.md` §3） |
+| 协议头 | `X-DeepAI-Code-Theos: 7`（计费车道版本；0.3.41 起为 7，2026-11-20 复核 0.3.42 仍为 7）。**车道门槛是服务端行为**：2026-11-18（0.3.41 发布当天）只有 7 通过，2026-11-19 复测已放宽为 ≤7 全通过、8 及以上 426（`docs/recon.md` §3） |
 | 进程实例 | `X-DeepAI-Code-Instance: <32 位 hex>`（每个出口代理随机一次，随该代理的所有 JSON 请求发出；桌面端是每进程一次） |
 | 签到 | `/theos` 响应带 `check_in:{nonce, seconds}`；下次 `/theos` 回传 `X-DeepAI-Code-Check-In` 与 `X-DeepAI-Code-Beacon: v=…;up=…;pi=0\|1`（`focus` 只在焦点状态已知时才追加） |
 | **机器指纹** | `X-DeepAI-Code-Machine: sha256(原始机器 UUID)`，用于按天发放免费 Theos；计量模型缺失时回 `machine_required` |
-| 会话粘性 | `X-Session-Affinity`（body 里的 `prompt_cache_key` 也会被上游使用） |
+| 会话粘性 | `X-Session-Affinity`（body 里的 `prompt_cache_key` 也会被上游使用）；网关另把它绑定到具体账号，让同一会话的前缀缓存留在同一个号上（见 §十） |
 | 容量拒绝 | `409 {"error":{"code":"session_busy"}}` + `Retry-After` |
 | 账号策略 | `403 social_login_required`：0.3.19 的阶段性收窄，2026-11-09 复测已解除；网关仍按 `blocked` 终态处理（见 `docs/recon.md` §4.1） |
 | 浏览器登录 | `GET /deepai_code/desktop_auth/?state=…&port=…` → 本机 `/auth-callback?code=…` → `POST /deepai_code/desktop_auth/exchange/` |
@@ -113,20 +109,24 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 ## 二、支持的模型
 
 模型目录**完全由上游下发**：网关只做缓存与别名，上游新增或下线模型都无需改代码。
-下表是 2026-11-14 从线上 `/v1/models` 导出的**实时目录**（27 个：11 免费 / 16 付费），
+下表是 2026-11-18 从线上 `/v1/models` 导出的**实时目录**（27 个：11 免费 / 16 付费），
+**2026-11-20 复核：与 11-18 快照逐字段零差异**（ID / 名称 / 上下文 / 最大输出 / 价格 /
+`default: glm-5.3-flash` 全部相同，仍 27 个、无新增无下线），
 `Theos/次` 取自上游 `theosPerRequest`（字符串），`0` 即免费。控制台「模型目录」页读的是同一份数据。
-（上一版快照里的 `crouton-alpha` 已被上游下线；`gpt-oss-120b` 客户端会主动过滤，网关也不展示。
- 相比 2026-11-13 的快照，本轮新增 6 个、无下线：`muse-ember`（免费）、`kimi-k3.1-pro`、
+（与 2026-11-14 的快照相比：**模型集合、名称、价格均未变**，只有 `glyph-cluster`
+ 的 `contextWindow` 从 320,000 变为 256,000。更早的 `crouton-alpha` 已下线；
+ `gpt-oss-120b` 客户端会主动过滤，网关也不展示。
+ 2026-11-14 那轮相对 11-13 新增 6 个、无下线：`muse-ember`（免费）、`kimi-k3.1-pro`、
  `gpt-6.1-terra`、`gemini-4-hydrogen`、`gemini-4-carbon`、`claude-sonnet-5-5`。）
 
 | ID | 名称 | 上下文 | 最大输出 | Theos/次 | 说明 |
 | --- | --- | ---: | ---: | ---: | --- |
 | `deepai-cyber` | DeepAI Cyber | 320,000 | 131,072 | **0** | 免费，纯文本 |
 | `deepseek-v4.1-flash` | DeepSeek V4.1 Flash 1017 | 320,000 | 131,072 | **0** | 免费（上游下拉是 `DeepSeek V4.1 Flash 1017`，桌面端会把旧名改写成它） |
-| `glm-5.3-flash` | GLM 5.3 Flash | 320,000 | 131,072 | **0** | 免费，默认模型 |
-| `glyph-cluster` | Glyph Cluster | 320,000 | 131,072 | **0** | 免费，纯文本 |
+| `glm-5.3-flash` | GLM 5.3 Flash | 320,000 | 131,072 | **0** | 免费，默认模型；實測 320k 完整（見下方「有效上下文上限」） |
+| `glyph-cluster` | Glyph Cluster | 256,000 | 131,072 | **0** | 免费，纯文本；實測上限 **256k**（260k 完整、320k 硬拒絕） |
 | `gpt-6-luna` | GPT-6 Luna | 320,000 | 128,000 | **0** | 免费 |
-| `mimo-2.6-flash` | MiMo 2.6 Flash | 320,000 | 131,072 | **0** | 免费 |
+| `mimo-2.6-flash` | MiMo 2.6 Flash | 320,000 | 131,072 | **0** | 免费；實測上限 **140k**（170k 起上游靜默截斷，網關提前裁剪） |
 | `mimo-2.6-pro` | MiMo 2.6 Pro | 320,000 | 131,072 | **0** | 免费 |
 | `minimax-m3.1-flash` | MiniMax M3.1 Flash | 320,000 | 131,072 | **0** | 免费 |
 | `muse-ember` | Muse Ember | 320,000 | 131,072 | **0** | 免费（2026-11-14 新增） |
@@ -153,8 +153,9 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 
 - 只有 `deepai-cyber` / `glm-5.3` / `glyph-cluster` / `solar-mini-4` / `minimax-m3` 是纯文本
   （`input: [text]`），其余都接受图片输入（`input: [text, image]`）；全部支持推理（`reasoning`）；
-- **车道 6 的目录把 `contextWindow` 统一收敛到 320,000**（0.3.37 起；车道 5 还是各模型
-  的真实上限 1M / 991k / 512k…）。这是新版客户端的压缩预算，网关按上游原样透传；
+- **车道 7 的目录把 `contextWindow` 统一收敛到 320,000，只有 `glyph-cluster`
+  是 256,000**（0.3.41 起的线上目录）。**2026-11-19 复测：车道 5 / 6 / 7 拿到的目录
+  完全一致**（27 个模型零差异），0.3.37 时代的分车道差异已消失；网关按上游原样透传；
 - **2026-11-14 起上游 `/deepai_code/models` 要求 `Api-Key`**：不带 Key 一律 401
   `auth_required`（此前「带不带都返回同一份目录」的结论已失效）。网关的目录刷新与
   车道探测因此都借用号池里一个账号的凭据；运维上要知道的坑见 §10.1；
@@ -166,6 +167,10 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 - **以线上 `/v1/models` 为准**：仓库里不放状态文件（`deepaicode2api-data*.json`
   是运行期产物，含上游 Key，已 gitignore 且已清理）；本表与 `/v1/models` 不一致时，
   先在控制台点「刷新模型目录」再按本表格式重新导出。
+- **内置兜底条目与线上对齐**：目录为空（首启未拉到 / 刷新失败）时 `/v1/models`
+  只回一条 `glm-5.3-flash`，字段取线上实测值（ctx **320,000**、maxTokens 131,072、
+  免费、text+image、reasoning）。旧构建写的是 `1,048,576`，会让客户端按 1M
+  上下文组请求后被上游拒（v0.1.11 已修，见 `docs/changes.md` §70）。
 
 内置别名（可在控制台覆盖，共 13 个，全部指向默认免费模型 `glm-5.3-flash`）：
 
@@ -189,7 +194,7 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 | --- | --- | --- |
 | GET | `/v1/models` | 模型目录（含 `deepai` 元信息） |
 | POST | `/v1/chat/completions` | 流式 / 非流式；支持 tools、图片、`prompt_cache_key` |
-| POST | `/v1/responses` | `openai-responses` 模型透传；其余模型自动翻译 |
+| POST | `/v1/responses` | `openai-responses` 模型透传；其余模型自动翻译（**无状态**：续接字段见下） |
 | POST | `/v1/audio/transcriptions` | 转发上游语音转写（webm / mp4） |
 | POST | `/v1/audio/translations` | 同上（别名） |
 
@@ -199,6 +204,67 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 | --- | --- | --- |
 | POST | `/v1/messages` | 流式 / 非流式，支持 `tool_use`、`thinking`、图片 |
 | POST | `/v1/messages/count_tokens` | 本地估算（上游不提供） |
+
+#### 上下文契约：`/v1/responses` 伺服端歷史暫存（链式续接）
+
+三套协议中，`/v1/chat/completions` 与 `/v1/messages` 仍按「调用方每轮发完整历史」工作
+（和桌面端一致）：网关不存对话，也不会替你补上一轮。但 `/v1/responses` 自 2026-11-20
+起支持**伺服端對話歷史暫存 + 重放**，解决反代 / magpie 插件客户端攜帶
+`previous_response_id` 續接时的「失忆」问题：
+
+- **其余模型（chat/completions 合成路径，如 `glm-5.3-flash`）**：每轮 `/v1/responses`
+  回應完成後，网关把该轮的 input 与 output 存进进程内暫存（按 response id 索引）。
+  下一轮帶 `previous_response_id` 时，网关沿鏈重組完整 input 再送上游——客户端无需
+  自己维护历史，链式续接不再回 400，也不会失忆。新回應有自己的 id，可继续链接。
+  - **暫存上限**：默认 TTL 24 小时、每个进程最多 500 轮，可用环境变量调整：
+    - `DEEPAI2API_HISTORY_TTL_HOURS`（默认 `24`）
+    - `DEEPAI2API_HISTORY_MAX_ENTRIES`（默认 `500`）
+  - **有效上下文上限（按模型實測值，避免上游靜默丟歷史）**：2026-11-20 把 11 個
+    免費模型全部實測（純透傳 + 唯一隨機 ASCII 階梯，附多輪對照），有效窗口按模型查表：
+    - **9 個免費模型**：`glm-5.3-flash`、`deepseek-v4.1-flash`、`qwen-3.8-flash`、
+      `minimax-m3.1-flash`、`muse-ember`、`solar-mini-4`、`gpt-6-luna`、
+      `mimo-2.6-pro`、`deepai-cyber` → **320,000**（等於標示值，不再人為砍到 120k）。
+    - **`glyph-cluster` → 256,000**（260k 完整，320k 被上游硬拒絕 400，目錄標 256k 一致）。
+    - **`mimo-2.6-flash` → 140,000**（140k 完整，170k 起上游「靜默截斷」：
+      `prompt_tokens` 掉到 5,296 ≈ 3%；上限落在 140k–170k，保守取 140k）。
+    - 未知／付費模型 → `min(標示值, 320,000)`，不再一律硬壓 120k。
+    - 網關重放時若超過各模型的有效窗口，先由網關裁剪並在 input 留下
+      「中間歷史已省略」標記，也不讓上游偷偷砍歷史。
+    - **環境變數覆寫**（排查／臨時調整用）：
+      - `DEEPAI2API_EFFECTIVE_CONTEXT_WINDOW`：全域覆寫（舊行為保留）。如 `64000`；
+        設 `0`／負數關閉上限。優先權最高。
+      - `DEEPAI2API_CONTEXT_WINDOWS`：按模型 JSON 覆寫，例如
+        `{"mimo-2.6-flash":140000,"glm-5.3-flash":320000}`（值 `0`／負數 = 該模型不設上限，
+        JSON 格式錯誤則忽略）。優先權低於全域覆寫、高於內建實測表。
+    - 單發探測（不鏈式）實測：唯一隨機 ASCII 160,000 bytes → 上游
+      `input_tokens=100,761`（比值約 1.59 tokens/byte）；重複填充會被前綴快取，
+      `input_tokens` 不可作為窗口判斷依據。
+  - **自動上下文壓縮（`truncation`）**：重放整條鏈後若超過有效窗口（見上）：
+    - `"truncation":"auto"`：網關自動裁掉最舊的**中段**輪次（保留開頭系統/首則訊息
+      與最近的可容納範圍，並插入一則「中間歷史已省略」說明），照常送上游。
+    - 未設或 `"default"`：回明確 400 `invalid_request_error`，訊息寫明 token 估算與
+      有效窗口/標示值，並提示「請由客戶端壓縮歷史，或改用 `truncation:auto`」。
+      **绝不靜默砍歷史**——那正是「失憶」的根源。
+    - token 估算：ASCII 按 ~1.6 bytes/token、非 ASCII 按 ~1 token/字粗估
+      （實測與上游 `input_tokens` 偏差在 ±30% 內）；只在上限判斷時計算，
+      正常情況零額外開銷。
+  - **生命周期**：进程内存储，**重启后历史清空**。重启后客户端若仍帶旧的
+    `previous_response_id`，网关找不到记录会回 400 `unsupported_parameter`——
+    此时客户端应重新发送完整 `input`（或在重启后先开新对话）。
+  - 仍**不支持**：`conversation`（服务端会话）与 `input` 里的 `item_reference`
+    ——它们依赖上游保存的状态，网关无从重建，会回明确的 400 `unsupported_parameter`。
+- **`openai-responses` 模型（如 `gpt-6-astra`）**：请求**原样透传**到上游 `/responses`，
+  `previous_response_id` / `conversation` 能否续接取决于上游
+  （2026-11-19 该模型持续 429，尚未验证；桌面端自身从不使用链式续接）。
+
+**受益的客户端用法**：任何在「同一視窗」连续多轮、且依赖服务端状态的 Responses 客户端
+（典型是 Claude Code / Codex 经反代、magpie 插件反代）——现在可以放心用
+`previous_response_id` 续接，不必每轮重发整段历史。非链式用法（每轮 `input` 直接带
+完整历史）行为不变，不会回歸。
+
+排障：请求日志（控制台日志页「消息」列 / `<数据文件>-logs.jsonl` 的 `messages`、
+`system` 字段）记录每次请求回喂的消息条数与是否带系统提示，不含正文——
+链式续接时该条数会随轮次增长，说明历史确实被重放。
 
 Claude Code 只需：
 
@@ -226,6 +292,24 @@ export ANTHROPIC_MODEL=glm-5.3-flash
 | POST | `/admin/api/login/start` | 发起浏览器登录，返回 `session_id` / `port` / `loopback` / `expires_in` |
 | POST | `/admin/api/login/poll` | 轮询登录结果（本机回调自动收，`status=pending\|ok\|error\|expired`） |
 | POST | `/admin/api/login/callback` | **粘贴回调 URL 完成登录**（`{session_id, callback}`）。Docker / 远程部署必用：浏览器落在 `127.0.0.1:<port>/auth-callback?code=…&state=…` 打不开时，把地址栏完整 URL 粘回来即可 |
+
+#### 已下线的端点：`/admin/api/state`
+
+`GET /admin/api/state` 曾在一次响应里**拍平下发全部账号**（603 个号约 430KB），
+已于 2026-05-20（RFC 8594 的 `Sunset`）下线，现在返回 `410 Gone`。
+它由两个端点取代：
+
+| 需要什么 | 用哪个 |
+| --- | --- |
+| 元信息（设置 / 统计 / 密钥 / 模型 / 车道 / 延迟） | `GET /admin/api/overview` |
+| 账号列表（分页 + 过滤 + 排序） | `GET /admin/api/accounts?offset=&limit=&group=&status=&q=&sort=&order=` |
+
+如果你还有脚本在用旧端点，迁移就是两次请求：
+
+```bash
+curl -s -H "X-Admin-Password: $DEEPAI2API_ADMIN_PASSWORD"      http://127.0.0.1:10087/admin/api/overview
+curl -s -H "X-Admin-Password: $DEEPAI2API_ADMIN_PASSWORD"      'http://127.0.0.1:10087/admin/api/accounts?limit=200&offset=0'
+```
 
 ### 控制台
 
@@ -282,7 +366,7 @@ printf 'DEEPAI2API_MASTER_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
 状态文件: …/deepaicode2api-data.json
 机器指纹: a1b2c3d4e5f6…（用于上游按天发放免费 Theos）
 已导入账号 desktop-…（~/.deepai-code/userdata/secrets/deepai-account.bin）
-模型目录已更新：18 个模型，默认 glm-5.3-flash
+模型目录已更新：27 个模型，默认 glm-5.3-flash
 DeepAICode2API dev 已启动: http://127.0.0.1:10087/
 ```
 
@@ -341,6 +425,10 @@ print(client.chat.completions.create(
 | `PROXY_POOL` | 推理代理池（逗号或换行分隔完整 URL；入池时按账号轮询分配） |
 | `PROXY_POOL_FILE` | 代理池文件（每行一个） |
 | `DEEPAI2API_ENV_FILE` | 指定 `.env` 路径 |
+| `DEEPAI2API_HISTORY_TTL_HOURS` | `/v1/responses` 伺服端歷史暫存存活小時數（默认 `24`） |
+| `DEEPAI2API_HISTORY_MAX_ENTRIES` | `/v1/responses` 伺服端歷史暫存最多輪次（默认 `500`） |
+| `DEEPAI2API_EFFECTIVE_CONTEXT_WINDOW` | 重放有效上下文上限的全域覆寫（优先級最高；默认按模型查表，見上方上下文契約；`0`/負數關閉） |
+| `DEEPAI2API_CONTEXT_WINDOWS` | 按模型覆寫有效上下文上限，JSON 物件如 `{"mimo-2.6-flash":140000}`（值 `0`/負數 = 該模型不設上限；格式錯誤忽略） |
 | `T3CODE_HOME` / `DEEPAI_CODE_HOME` | 桌面端数据目录 |
 
 ### 诊断工具
@@ -633,9 +721,10 @@ docker run -d --name deepaicode2api \
   deepaicode2api
 ```
 
-> `X-DeepAI-Code-Theos: 6` 是当前客户端（0.3.37）的车道：`/chat/completions` 上
-> 5 / 6 都回 200，更旧的 2–4 与更高的 7+ 回 `426 lane_version_unsupported`
-> （`/models` 放宽到 1–6，见 `docs/recon.md` §3）。
+> `X-DeepAI-Code-Theos: 7` 是当前客户端（0.3.42）的车道。车道门槛由上游随时调整：
+> 2026-11-18 是「只有 7」，2026-11-19 已放宽成「≤7 全通过、8 及以上 426
+> `lane_version_unsupported`」（见 `docs/recon.md` §3）。发旧车道**仍能跑通**，
+> 所以判断协议是否跟进要看 `/theos` 回的 `lane_version`（控制台概览的「上游车道」）。
 > `X-DeepAI-Code-Machine` 仍是计量模型的必需头：缺失时返回 `400 machine_required`。
 > 容器里通常读不到宿主机的 SMBIOS UUID，因此 `DEEPAI_MACHINE_ID` 在容器部署时**必填**。
 > 填桌面端所在机器的原始 UUID 即可复用同一份每日免费额度。
@@ -684,9 +773,15 @@ go build -ldflags "-X main.version=v0.1.2" -o bin/deepaicode2api .
 
 ## 十、限制与说明
 
-- `X-DeepAI-Code-Theos` 必须发 `6`（0.3.37 起，2026-11-15 复核；元数据端点 1–6 都接受，推理端点 5 / 6 都接受，别用 `/models` 判断上游可用性）；推理端点车道不符返回 426 `lane_version_unsupported`；
-- 心跳 `X-DeepAI-Code-Beacon` 的 `v=` 必须是当前客户端版本（现为 **0.3.37**，见 `deepai.AppVersion`）；`pi=` 在 0.3.30 起是可选的，但发了不会错；
-- 车道探测结果由**当前构建**验证过（`Settings.LaneBuild == deepai.LaneVersion`）时无条件信任，即使它比编译值旧；否则按 `max(存储值, 编译值)` 取较新值。探测序列从编译期车道开始，**不能先试旧车道**（`/models` 对旧车道仍然宽容）；
+- `/v1/chat/completions` 与 `/v1/messages` 不存对话，也不补历史。`/v1/responses`
+  合成路径会在进程内暂存已完成响应，支持 `previous_response_id` 重放；缓存有 TTL、条目数
+  与 64 MiB 总量上限，进程重启后清空。找不到历史、`conversation` / `item_reference`
+  仍回明确 400；上下文超限时按「上下文契约」处理；
+- `X-DeepAI-Code-Theos` 发 `7`（0.3.41 起，2026-11-20 复核 0.3.42 未变）。上游门槛可能放宽：2026-11-19 实测 ≤7 全通过、
+  8 及以上 426，此时旧车道「能用」并不代表车道是对的 —— 与上游当前车道的差异由
+  `/theos` 的 `lane_version` 观测（`Server.UpstreamLane` / `LaneDrift`，控制台概览可见）；
+- 心跳 `X-DeepAI-Code-Beacon` 的 `v=` 必须是当前客户端版本（现为 **0.3.42**，见 `deepai.AppVersion`）；`pi=` 在 0.3.30 起是可选的，但发了不会错；
+- 车道探测结果由**当前构建**验证过（`Settings.LaneBuild == deepai.LaneVersion`）时无条件信任，即使它比编译值旧；否则按 `max(存储值, 编译值)` 取较新值。探测序列从编译期车道开始，**不能先试旧车道**；
 - 请求体形状拒绝除匹配两版文案外，还兜底 `400 + code=invalid_request_error`；补形状重试仍失败时回传第二个错误；
 - Anthropic `budget_tokens` 按量级映射到 `low/medium/high/xhigh/max`（4k/16k/32k/64k 分界），`output_config.effort` 原样透传；2026-11-15 实测上游接受六档；
 - 推理请求按桌面端实测值发 `user-agent: node` + `accept: */*`，**不带** Chrome UA / `sec-ch-ua` / `Accept-Language`（推理侧只发桌面端请求头）；
@@ -771,8 +866,8 @@ go build -ldflags "-X main.version=v0.1.2" -o bin/deepaicode2api .
 | 文件 | 内容 | 状态 |
 | --- | --- | --- |
 | `README.md` | 总览、接口、参数、验收基线与已知坑（本文） | 维护中 |
-| `docs/recon.md` | 逆向速查：上游端点、请求头、错误语义、复现命令（替代 HAR） | 维护中（最近复核 2026-11-14） |
-| `docs/changes.md` | 2026-11 的改造记录：根因、决策与验收（§61/§62 是最新一轮） | 维护中 |
+| `docs/recon.md` | 逆向速查：上游端点、请求头、错误语义、复现命令（替代 HAR） | 维护中（最近复核 2026-11-20） |
+| `docs/changes.md` | 2026-11 的改造记录：根因、决策与验收（§71–§76 是最新一轮） | 维护中 |
 | `docs/lessons.md` | **工程经验沉淀**：十批压测 → 可复用规则 + 改动前检查清单 | 维护中 |
 | `docs/performance.md` | 压测数据与优化方案：单号 E2E、阶段分解、P0/P1/P2 收益测算 | 维护中（数据快照 2026-11-10） |
 | `docs/pi-lens.md` | 本仓的 pi-lens 配置说明：关了什么、为什么、怎么验证与恢复 | 维护中 |
