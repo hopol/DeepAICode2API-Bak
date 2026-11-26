@@ -15,6 +15,7 @@ import (
 	"deepaicode2api/internal/httpx"
 	"deepaicode2api/internal/observe"
 	"deepaicode2api/internal/poolsvc"
+	"deepaicode2api/internal/proxy"
 	"deepaicode2api/internal/registry"
 	"deepaicode2api/internal/respstate"
 	"deepaicode2api/internal/store"
@@ -35,6 +36,25 @@ type Server struct {
 	refreshMu    sync.Mutex
 	proxyMu      sync.Mutex
 	proxyClients map[string]*deepai.Client
+
+	// proxyHealth 是出口代理的健康台账（连续失败 → 冷却），
+	// 调度时用来「先换出口、再换号」。进程内状态，重启即清空。
+	proxyHealth *proxy.Health
+
+	// warm 是后台签到预热的退避表（连续失败 → 2m…20m 不再预烘）。
+	// 只影响预热：热路径（推理前的 EnsureCheckIn）不受它约束。
+	// 进程内状态，重启即清空。
+	warm warmCooldown
+
+	// probeMu / probes / probeInflight 是出口可用性探测的缓存：
+	// 代理串解析成功后不能直接信它，先 CONNECT 到上游验一次。
+	probeMu       sync.Mutex
+	probes        map[string]probeEntry
+	probeInflight map[string]bool
+
+	// assignPool 是「分配代理」用的池：游标跨调用保留，配置（env / 文件 mtime）
+	// 变化时自动重载 —— 否则运维往 PROXY_POOL_FILE 追加新出口后必须重启网关。
+	assignPool assignPoolCache
 
 	// laneMu / laneCheckedAt 是车道探测的节流：426 会成批出现，
 	// 没有冷却就会把一次车道升级变成一轮探测风暴。
@@ -86,6 +106,9 @@ func New(st *store.Store) *Server {
 	s := &Server{
 		Store: st, Up: deepai.NewClient(), Login: newLoginSessions(),
 		proxyClients:  map[string]*deepai.Client{},
+		proxyHealth:   proxy.NewHealth(),
+		probes:        map[string]probeEntry{},
+		probeInflight: map[string]bool{},
 		admissionWait: admissionWait,
 		limiter:       guard.NewLimiter(),
 		adminGuard:    guard.NewAdminGuard(),
@@ -280,6 +303,11 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 				"api":               m.API,
 				"theos_per_request": m.TheosPerRequest,
 				"theos_per_second":  m.TheosPerSecond,
+				// context_window 是上游目录的标称值（320,000），**不是**实际可用
+				// 上限：issue #7 实测请求体约 196 KB 起上游就静默砍掉开头。
+				// 有效值单独下发，避免改标称值后与上游目录、控制台对不上。
+				"effective_context_window": respstate.EffectiveContextWindow(m.ID, m.ContextWindow),
+				"context_body_bytes":       respstate.ContextBodyBytes(),
 			},
 		})
 	}

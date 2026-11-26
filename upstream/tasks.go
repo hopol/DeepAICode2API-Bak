@@ -97,6 +97,35 @@ func quotaGuard(srv *server.Server, stop <-chan struct{}) {
 	}
 }
 
+// checkInWarm 是后台签到预热：把「到期的 /theos」提前在请求路径之外消化。
+//
+// 签到本身是推理前的同步调用（nonce 回传是上游判定真实客户端的依据，
+// 不能挪到推理之后），线上 2026-11-22 的 37 小时里有 940 次请求被它阻塞、
+// 最长吃满 10s 预算。预热之后热路径仍然调 EnsureCheckIn（语义不变），
+// 但绝大多数会因为「刚刚回传过」直接返回。
+//
+// 周期 30s：半衰期（seconds/2，默认 300s）内只会命中 1~2 个号；
+// 批上限 8、2 并发 —— 16 个号全部到期时最多 4 轮消化完，
+// 而每轮预算 20s（预热不使用热路径的 2.5s 短预算，住宅代理冷启动就要 6–8s）。
+// 轮级 ctx 给到 120s：8 个号 / 2 并发 × 20s = 80s 的最坏情况装得下。
+func checkInWarm(srv *server.Server, stop <-chan struct{}) {
+	tick := time.NewTicker(30 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-tick.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			n := srv.WarmCheckIns(ctx, 8, 2)
+			cancel()
+			if n > 0 {
+				log.Printf("[checkin] 后台预热 %d 个账号的签到", n)
+			}
+		}
+	}
+}
+
 // autoImport 在启动时尝试导入本机桌面端凭据。
 func autoImport(st *store.Store, dir string) {
 	results, err := credimport.ImportAllFromDesktop(dir)

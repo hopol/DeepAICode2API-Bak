@@ -10,7 +10,9 @@
 复用桌面端登录后写入的 API Key，无需另申请密钥；纯 Go 标准库实现，
 单文件约 10 MB，零外部依赖。
 
-[![ci](https://github.com/2951461586/DeepAICode2API/actions/workflows/ci.yml/badge.svg)](https://github.com/2951461586/DeepAICode2API/actions/workflows/ci.yml) [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev) [![deps](https://img.shields.io/badge/deps-0%20(stdlib)-00ADD8)](go.mod) [![tests](https://img.shields.io/badge/tests-616%20cases-brightgreen)](https://github.com/2951461586/DeepAICode2API/actions/workflows/ci.yml)
+**中文 / [English](README.en.md)**
+
+[![ci](https://github.com/2951461586/DeepAICode2API/actions/workflows/ci.yml/badge.svg)](https://github.com/2951461586/DeepAICode2API/actions/workflows/ci.yml) [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev) [![deps](https://img.shields.io/badge/deps-0%20(stdlib)-00ADD8)](go.mod) [![tests](https://img.shields.io/badge/tests-653%20cases-brightgreen)](https://github.com/2951461586/DeepAICode2API/actions/workflows/ci.yml)
 [![protocol](https://img.shields.io/badge/protocol-OpenAI%20%7C%20Anthropic-6b4fbb)](#三接口清单) [![docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)](docker-compose.yml) [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Ask DeepWiki](https://img.shields.io/badge/Ask%20DeepWiki-blue.svg?labelColor=000000&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAPoAAAD6AG1e1JrAAACIUlEQVRYw+2XP2gUQRTGv7d3JhYWQawkIBaCVWzETos0gmAnVoKNTSoLK0E7EQQrC20sBVFBtLPQRgTBtBaKjYgIQUSxiJq7fT+LvCGPJZdNLt4dQj5Y3u7sznzfzLw/s9IO/icANiniCujEfWdsQgBLxAbsbraPZcmBfcAt4DNwKQsZNfEUsAB8YRV12LfA6ZHuedg7AO7ed/c+UBcbQhbiu+6wXIM6EnZWkszMJe2Ke0n6I2la0v51hFeSMLN6OwIK6jJwEBdUYb2MAxRSz6sY4geiahFgLe1Hwq6YWe3us8AN4FQQU4QM64SPY69Xyr43fADgNjAPXHb3peSsD4FDQ0VLEjAHvIhBPS6AHvA1bBO9JPAXcHFbIRtJ5yzwIQZ9CZwAusDJENIkLqsG8DpNyIZJwSUk9wLHgakcesC1JCCjiHm1kYDNOEjptCxpSVK/8f73OFLxPLAYM3oCzEX7MXf/lJbc/8kWpA4HgQdpYI9IWAbeh83whi84cHXL+58EPBoQhnmm94EzwE3gZ2p/Dhzdbhg+TaRr01x7ftb4/jBwFzjXrCvDpmLW9crVLNeR9CaapoGemb2TdCERW1tNaBNQ8jktwmozqwtpqRNtdWAjARYk39IS12ZWRX7vmJmA71nQZgi36gN7gCvAj5xc3P0jcH7kx7Ik5IC73wsh14GZsZySow5002l4Jr0b6+m4eSyvpAn8lEzsx2QHo8RfUrlN+uPq4ksAAAAASUVORK5CYII=)](https://deepwiki.com/2951461586/DeepAICode2API)
 
@@ -19,7 +21,7 @@
 | 能力 | 说明 |
 | --- | --- |
 | 双协议 | OpenAI `/v1/chat/completions`、`/v1/responses`；Anthropic `/v1/messages` |
-| 协议对齐 | 车道 7 + `X-DeepAI-Code-Instance` + `/theos` 签到；区分 `social_login_required` / `machine_required` / `lane_version_unsupported` |
+| 协议对齐 | 车道 8 + `X-DeepAI-Code-Instance` + `/theos` 签到；区分 `social_login_required` / `machine_required` / `lane_version_unsupported` |
 | 号池治理 | 分组轮询、失败换号、容量退避、按账号配额调度、策略拦截自动跳过 |
 | 账号接入 | 浏览器登录（Google / Apple / 邮箱密码）、桌面端凭据导入、手工 API Key；入池自动分配机器指纹与代理 |
 | 控制台 | 单页内嵌 UI：账号 / 密钥 / 日志 / 统计 / 设置 |
@@ -42,10 +44,13 @@
 
 ## 一、逆向结论
 
-DeepAI Code 是 **Electron + 本地 t3code server** 架构（应用版本 **0.3.42**，车道 7；
-0.3.20 → 0.3.30 → 0.3.32 → 0.3.35 → 0.3.36 → 0.3.37 → 0.3.41 → 0.3.42 的 wire protocol 逐项比对：
-**0.3.41 只抬了车道（6 → 7），0.3.42 在协议面上零变更（车道仍 7），其余请求头 / 指纹 / 签到 / 推理端点未变**；
-新增的 `sessions/save_records` 只服务历史备份，不进推理链路）。
+DeepAI Code 是 **Electron + 本地 t3code server** 架构（应用版本 **0.3.52**，车道 8；
+0.3.20 → 0.3.30 → 0.3.32 → 0.3.35 → 0.3.36 → 0.3.37 → 0.3.41 → 0.3.42 → 0.3.43 → 0.3.44 → 0.3.45 → 0.3.47 → 0.3.48 → 0.3.50 → 0.3.52 的 wire protocol 逐项比对：
+**0.3.41 抬了车道（6 → 7），0.3.42 / 0.3.43 / 0.3.44 / 0.3.45 / 0.3.47 / 0.3.48 协议面零变更（车道仍 7），0.3.50 的 agent 运行时迁移（pi → dsh）不碰请求头 / 指纹 / 签到 / 推理端点 / 请求体字段，0.3.52 把车道抬到 8（7 → 8）并新增自证头 `X-DeepAI-Code-Proof`——除此之外请求头集合、指纹、签到形态、推理端点、请求体仍逐字未变**；
+0.3.45 新增的 DeepAI Connect（`/connect/*`、`/sponsored/authorize`、PKCE 登录）与
+0.3.47 的登录指引 / 恢复提示 / 启动与存储错误文案、0.3.48 的启动配对令牌修复与目录权限恢复指引、
+0.3.50 的 DeepSeek / OpenCode 托管 harness 路由、0.3.52 的编排 v2 / ACP provider / harness 运行时探测改动，
+都是账号、远程主机与本地编排面，不进推理链路；`sessions/save_records` 只服务历史备份）。
 真正干活的不是桌面壳，而是 `resources/server.asar` 里的 t3code server；
 它把上游能力封装成本地回环 HTTP 服务，再交给 Pi（编码 agent）调用。
 
@@ -65,14 +70,15 @@ DeepAI Code 是 **Electron + 本地 t3code server** 架构（应用版本 **0.3.
 | 语音转写 | `POST https://api.deepai.org/speech_to_text`（字段 `voiceRecording`） |
 | 联网搜索 | `POST https://api.deepai.org/deepai_code/web_search` |
 | **鉴权** | 请求头 `Api-Key: <apiKey>`（不是 `Authorization`） |
-| 协议头 | `X-DeepAI-Code-Theos: 7`（计费车道版本；0.3.41 起为 7，2026-11-20 复核 0.3.42 仍为 7）。**车道门槛是服务端行为**：2026-11-18（0.3.41 发布当天）只有 7 通过，2026-11-19 复测已放宽为 ≤7 全通过、8 及以上 426（`docs/recon.md` §3） |
+| 协议头 | `X-DeepAI-Code-Theos: 8`（计费车道版本；0.3.41–0.3.50 为 7，**0.3.52 抬到 8**）。**车道门槛是服务端行为**：2026-11-18（0.3.41 发布当天）只有 7 通过；2026-11-19 放宽为 ≤7 全通过、8+ 426；**2026-11-25 复核变成窗口形态：7 / 8 通过，6 与 9 被拒**（`docs/recon.md` §3） |
+| 自证头 | `X-DeepAI-Code-Proof`（0.3.52 新增，车道 8）：值由随包原生 helper `resource-monitor --attest` 用本构建密钥算出，`/theos` 与模型调用分别送「签到证明」与「请求标签」。**网关不实现**：2026-11-25 实测上游不校验 —— 缺失或随手编的 hex 全部 200 |
 | 进程实例 | `X-DeepAI-Code-Instance: <32 位 hex>`（每个出口代理随机一次，随该代理的所有 JSON 请求发出；桌面端是每进程一次） |
 | 签到 | `/theos` 响应带 `check_in:{nonce, seconds}`；下次 `/theos` 回传 `X-DeepAI-Code-Check-In` 与 `X-DeepAI-Code-Beacon: v=…;up=…;pi=0\|1`（`focus` 只在焦点状态已知时才追加） |
 | **机器指纹** | `X-DeepAI-Code-Machine: sha256(原始机器 UUID)`，用于按天发放免费 Theos；计量模型缺失时回 `machine_required` |
 | 会话粘性 | `X-Session-Affinity`（body 里的 `prompt_cache_key` 也会被上游使用）；网关另把它绑定到具体账号，让同一会话的前缀缓存留在同一个号上（见 §十） |
 | 容量拒绝 | `409 {"error":{"code":"session_busy"}}` + `Retry-After` |
 | 账号策略 | `403 social_login_required`：0.3.19 的阶段性收窄，2026-11-09 复测已解除；网关仍按 `blocked` 终态处理（见 `docs/recon.md` §4.1） |
-| 浏览器登录 | `GET /deepai_code/desktop_auth/?state=…&port=…` → 本机 `/auth-callback?code=…` → `POST /deepai_code/desktop_auth/exchange/` |
+| 浏览器登录 | `GET /deepai_code/desktop_auth/?state=…&port=…&code_challenge=…&code_challenge_method=S256` → 本机 `/auth-callback?code=…` → `POST /deepai_code/desktop_auth/exchange/`（body 带 `code_verifier`）。PKCE 与 0.3.45 桌面端一致，可用 `DEEPAI2API_LOGIN_PKCE=0` 退回旧形态 |
 
 ### 1.2 上游本身就是 OpenAI 兼容的
 
@@ -109,11 +115,12 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 ## 二、支持的模型
 
 模型目录**完全由上游下发**：网关只做缓存与别名，上游新增或下线模型都无需改代码。
-下表是 2026-11-18 从线上 `/v1/models` 导出的**实时目录**（27 个：11 免费 / 16 付费），
-**2026-11-20 复核：与 11-18 快照逐字段零差异**（ID / 名称 / 上下文 / 最大输出 / 价格 /
-`default: glm-5.3-flash` 全部相同，仍 27 个、无新增无下线），
+下表是 2026-11-18 从线上 `/v1/models` 导出的**实时目录**（28 个：12 免费 / 16 付费），
+**2026-11-24 复核：与 11-18 快照相比只多 1 个免费模型 `claude-haiku-5-5`**（95,000 / 64,000 / 0）；
+**2026-11-25 复核（车道 8）：28 条逐字段零差异**，且车道 7 / 8 拿到的目录完全相同，
+其余 27 个逐字段相同（ID / 名称 / 上下文 / 最大输出 / 价格 / `default: glm-5.3-flash` 全部相同，无下线改价），
 `Theos/次` 取自上游 `theosPerRequest`（字符串），`0` 即免费。控制台「模型目录」页读的是同一份数据。
-（与 2026-11-14 的快照相比：**模型集合、名称、价格均未变**，只有 `glyph-cluster`
+（11-20 复核与 11-18 快照逐字段零差异；与 2026-11-14 的快照相比：**模型集合、名称、价格均未变**，只有 `glyph-cluster`
  的 `contextWindow` 从 320,000 变为 256,000。更早的 `crouton-alpha` 已下线；
  `gpt-oss-120b` 客户端会主动过滤，网关也不展示。
  2026-11-14 那轮相对 11-13 新增 6 个、无下线：`muse-ember`（免费）、`kimi-k3.1-pro`、
@@ -121,6 +128,7 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 
 | ID | 名称 | 上下文 | 最大输出 | Theos/次 | 说明 |
 | --- | --- | ---: | ---: | ---: | --- |
+| `claude-haiku-5-5` | Claude Haiku 5.5 | 95,000 | 64,000 | **0** | 免费（2026-11-24 新增），唯一非 320k 的付费级命名模型 |
 | `deepai-cyber` | DeepAI Cyber | 320,000 | 131,072 | **0** | 免费，纯文本 |
 | `deepseek-v4.1-flash` | DeepSeek V4.1 Flash 1017 | 320,000 | 131,072 | **0** | 免费（上游下拉是 `DeepSeek V4.1 Flash 1017`，桌面端会把旧名改写成它） |
 | `glm-5.3-flash` | GLM 5.3 Flash | 320,000 | 131,072 | **0** | 免费，默认模型；實測 320k 完整（見下方「有效上下文上限」） |
@@ -153,9 +161,9 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 
 - 只有 `deepai-cyber` / `glm-5.3` / `glyph-cluster` / `solar-mini-4` / `minimax-m3` 是纯文本
   （`input: [text]`），其余都接受图片输入（`input: [text, image]`）；全部支持推理（`reasoning`）；
-- **车道 7 的目录把 `contextWindow` 统一收敛到 320,000，只有 `glyph-cluster`
+- **车道 7 / 8 的目录把 `contextWindow` 统一收敛到 320,000，只有 `glyph-cluster`
   是 256,000**（0.3.41 起的线上目录）。**2026-11-19 复测：车道 5 / 6 / 7 拿到的目录
-  完全一致**（27 个模型零差异），0.3.37 时代的分车道差异已消失；网关按上游原样透传；
+  完全一致**（当时 27 个模型零差异），0.3.37 时代的分车道差异已消失；网关按上游原样透传；
 - **2026-11-14 起上游 `/deepai_code/models` 要求 `Api-Key`**：不带 Key 一律 401
   `auth_required`（此前「带不带都返回同一份目录」的结论已失效）。网关的目录刷新与
   车道探测因此都借用号池里一个账号的凭据；运维上要知道的坑见 §10.1；
@@ -228,6 +236,15 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
     - **`mimo-2.6-flash` → 140,000**（140k 完整，170k 起上游「靜默截斷」：
       `prompt_tokens` 掉到 5,296 ≈ 3%；上限落在 140k–170k，保守取 140k）。
     - 未知／付費模型 → `min(標示值, 320,000)`，不再一律硬壓 120k。
+    - **請求體字節閘門（2026-11-22，issue #7）**：上游真正的懸崖是**請求體約 196 KB**，
+      不是 token 數 —— 第三方網關交叉實測：195,809 B 完整讀入，196,811 B 起上游靜默丟掉開頭
+      （system / 最初幾輪），`usage.prompt_tokens` 釘在 ~40k。目錄標示 320k 在純英文下
+      （~4.2 B/token）要 ~512 KB 才會被本包的 token 估算觸發，攔不住，所以重放另加一道
+      `DEEPAI2API_CONTEXT_BODY_BYTES`（默認 `196608`，`0`／負數關閉）：超限時同樣走上面兩條
+      路徑（`truncation:auto` 裁剪或 400 明確報錯）。
+    - `/v1/models` 的 `deepai` 元信息因此新增 **`effective_context_window`**（按模型實測上限）與
+      **`context_body_bytes`**（字節閘門的值）；`context_window` 仍是上游標稱值，不篡改，
+      方便客戶端／腳本自行取用真實上限。
     - 網關重放時若超過各模型的有效窗口，先由網關裁剪並在 input 留下
       「中間歷史已省略」標記，也不讓上游偷偷砍歷史。
     - **環境變數覆寫**（排查／臨時調整用）：
@@ -262,9 +279,14 @@ OpenRouter 风格的 `provider`、`reasoning`、`reasoning_details`、`cost` 等
 `previous_response_id` 续接，不必每轮重发整段历史。非链式用法（每轮 `input` 直接带
 完整历史）行为不变，不会回歸。
 
-排障：请求日志（控制台日志页「消息」列 / `<数据文件>-logs.jsonl` 的 `messages`、
+排障：請求日志（控制台日志页「消息」列 / `<数据文件>-logs.jsonl` 的 `messages`、
 `system` 字段）记录每次请求回喂的消息条数与是否带系统提示，不含正文——
 链式续接时该条数会随轮次增长，说明历史确实被重放。
+
+2026-11-22 起同一行日志还带 **`body_bytes`**（实际发往上游的请求体字节数）与
+**`body_near_cap`**（达到 `DEEPAI2API_CONTEXT_BODY_BYTES` 的 90% 时置 `true`，
+只在日志里提示、不阻断）。`messages` 正常增长但模型仍失忆时，先看 `body_bytes`：
+超过约 196 KB 就是上游静默砍头（issue #7），而不是网关丢历史。
 
 Claude Code 只需：
 
@@ -366,7 +388,7 @@ printf 'DEEPAI2API_MASTER_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
 状态文件: …/deepaicode2api-data.json
 机器指纹: a1b2c3d4e5f6…（用于上游按天发放免费 Theos）
 已导入账号 desktop-…（~/.deepai-code/userdata/secrets/deepai-account.bin）
-模型目录已更新：27 个模型，默认 glm-5.3-flash
+模型目录已更新：28 个模型，默认 glm-5.3-flash
 DeepAICode2API dev 已启动: http://127.0.0.1:10087/
 ```
 
@@ -425,10 +447,12 @@ print(client.chat.completions.create(
 | `PROXY_POOL` | 推理代理池（逗号或换行分隔完整 URL；入池时按账号轮询分配） |
 | `PROXY_POOL_FILE` | 代理池文件（每行一个） |
 | `DEEPAI2API_ENV_FILE` | 指定 `.env` 路径 |
+| `DEEPAI2API_LOGIN_PKCE` | 浏览器登录是否带 PKCE（默认 `true`，与桌面端 0.3.52 一致）；`0` 退回只发 `state`+`port` 的旧形态 |
 | `DEEPAI2API_HISTORY_TTL_HOURS` | `/v1/responses` 伺服端歷史暫存存活小時數（默认 `24`） |
 | `DEEPAI2API_HISTORY_MAX_ENTRIES` | `/v1/responses` 伺服端歷史暫存最多輪次（默认 `500`） |
 | `DEEPAI2API_EFFECTIVE_CONTEXT_WINDOW` | 重放有效上下文上限的全域覆寫（优先級最高；默认按模型查表，見上方上下文契約；`0`/負數關閉） |
 | `DEEPAI2API_CONTEXT_WINDOWS` | 按模型覆寫有效上下文上限，JSON 物件如 `{"mimo-2.6-flash":140000}`（值 `0`/負數 = 該模型不設上限；格式錯誤忽略） |
+| `DEEPAI2API_CONTEXT_BODY_BYTES` | 單次請求體安全上限（字節，默認 `196608` ≈ 192 KiB）：上游實測約 196 KB 起靜默截斷開頭（issue #7）；`0`/負數關閉 |
 | `T3CODE_HOME` / `DEEPAI_CODE_HOME` | 桌面端数据目录 |
 
 ### 诊断工具
@@ -721,7 +745,20 @@ docker run -d --name deepaicode2api \
   deepaicode2api
 ```
 
-> `X-DeepAI-Code-Theos: 7` 是当前客户端（0.3.42）的车道。车道门槛由上游随时调整：
+**长期部署建议用 `scripts/deploy.sh`**（build → 不可变 tag → up → 等健康检查）：
+
+```bash
+sudo install -m 600 /dev/null /etc/deepaicode2api.env   # 机密（账号 / 口令 / 代理 / 机器指纹）
+sh scripts/deploy.sh v0.1.13                            # 部署；失败会打印日志并给出回滚命令
+DEEPAI2API_IMAGE=<旧 tag> sh scripts/deploy.sh           # 回滚到指定镜像
+```
+
+- 机密统一放 `DEEPAI2API_ENV_FILE`（默认 `/etc/deepaicode2api.env`，0600），
+  **不要**留在代码目录；`.env` 只放 `VERSION` / `DEEPAI2API_IMAGE` / `DEEPAI2API_ADDR` 这类部署参数；
+- 容器自带 `healthcheck`（镜像内 `wget /healthz`，30s 一次）与 `mem_limit: 512m`；
+  之前没有 healthcheck，进程假死时 `unless-stopped` 永远不会重启（2026-11-22 线上复盘）；
+
+> `X-DeepAI-Code-Theos: 8` 是当前客户端（0.3.52）的车道（0.3.41–0.3.50 是 7）。车道门槛由上游随时调整：
 > 2026-11-18 是「只有 7」，2026-11-19 已放宽成「≤7 全通过、8 及以上 426
 > `lane_version_unsupported`」（见 `docs/recon.md` §3）。发旧车道**仍能跑通**，
 > 所以判断协议是否跟进要看 `/theos` 回的 `lane_version`（控制台概览的「上游车道」）。
@@ -770,6 +807,11 @@ go build -ldflags "-X main.version=v0.1.2" -o bin/deepaicode2api .
   `sh scripts/release.sh v0.1.5 --publish` 交叉编译各平台二进制并创建 GitHub Release
   （脚本构建前会清掉 `dist/` 里上一版的 `deepaicode2api_*` 产物：`gh release upload`
   传的是 `dist/*`，残留的旧二进制会被一起传上去）。
+- **命名规则（硬约束）**：tag 与 Release 标题**一律 `vX.X.X`（三段数字）**，
+  **不接任何描述后缀**（不要「v0.1.23 — 修复……」，不要日期、不要中文）。
+  描述写进 release notes（`dist/release-notes-<ver>.md`）与 `docs/changes.md`。
+  `release.sh` 会校验格式（不合规直接退出），并在 Release 已存在时把标题改回版本号
+  本身；控制台的更新比对只看 `tag_name`，与标题无关。
 
 ## 十、限制与说明
 
@@ -777,10 +819,16 @@ go build -ldflags "-X main.version=v0.1.2" -o bin/deepaicode2api .
   合成路径会在进程内暂存已完成响应，支持 `previous_response_id` 重放；缓存有 TTL、条目数
   与 64 MiB 总量上限，进程重启后清空。找不到历史、`conversation` / `item_reference`
   仍回明确 400；上下文超限时按「上下文契约」处理；
-- `X-DeepAI-Code-Theos` 发 `7`（0.3.41 起，2026-11-20 复核 0.3.42 未变）。上游门槛可能放宽：2026-11-19 实测 ≤7 全通过、
+- **目录标称 320k ≠ 实际可用 320k**：上游在请求体约 196 KB 处静默截断开头的 system /
+  最初几轮（issue #7 实测；纯英文约 40k tokens，西里尔文约 69k tokens 仍可读入，
+  说明判据是字节而非 token）。网关只对 `/v1/responses` 重放路径强制
+  `DEEPAI2API_CONTEXT_BODY_BYTES`（默认 196,608 B）；`/v1/chat/completions` 与
+  `/v1/messages` 保持透明代理，超限只在日志里打 `body_bytes` / `body_near_cap`——
+  客户端仍应对长会话自行压缩历史；
+- `X-DeepAI-Code-Theos` 发 `8`（0.3.52 起；0.3.41–0.3.50 是 7）。上游门槛可能放宽，也可能收窄成窗口：2026-11-19 实测 ≤7 全通过、
   8 及以上 426，此时旧车道「能用」并不代表车道是对的 —— 与上游当前车道的差异由
   `/theos` 的 `lane_version` 观测（`Server.UpstreamLane` / `LaneDrift`，控制台概览可见）；
-- 心跳 `X-DeepAI-Code-Beacon` 的 `v=` 必须是当前客户端版本（现为 **0.3.42**，见 `deepai.AppVersion`）；`pi=` 在 0.3.30 起是可选的，但发了不会错；
+- 心跳 `X-DeepAI-Code-Beacon` 的 `v=` 必须是当前客户端版本（现为 **0.3.52**，见 `deepai.AppVersion`）；`pi=` 在 0.3.30 起是可选的，但发了不会错；
 - 车道探测结果由**当前构建**验证过（`Settings.LaneBuild == deepai.LaneVersion`）时无条件信任，即使它比编译值旧；否则按 `max(存储值, 编译值)` 取较新值。探测序列从编译期车道开始，**不能先试旧车道**；
 - 请求体形状拒绝除匹配两版文案外，还兜底 `400 + code=invalid_request_error`；补形状重试仍失败时回传第二个错误；
 - Anthropic `budget_tokens` 按量级映射到 `low/medium/high/xhigh/max`（4k/16k/32k/64k 分界），`output_config.effort` 原样透传；2026-11-15 实测上游接受六档；
@@ -809,6 +857,10 @@ go build -ldflags "-X main.version=v0.1.2" -o bin/deepaicode2api .
   `DEEPAI2API_MASTER_KEY` 后整文件加密，请务必保证主密钥不随备份泄露；
 - 浏览器登录会换取上游 API Key 并写入状态文件；可开启整文件加密（见上）；
 - 代理 URL 含账号密码，必须只放在 `.env` / 本地台账（已 gitignore），不要提交；
+- **上游可达性**（issue #1）：网关不内置翻墙能力，`api.deepai.org` 必须能直连。
+  中国大陆用户可以把**上游请求**放进自己的代理：`PROXY_POOL` 或账号专属出口
+  （见 §6.3）；浏览器登录仍需本地能打开 DeepAI 登录页，否则用 Docker 的粘贴回调
+  完成（见 §九）。网关只复用你已有的网络，不提供也不绕过网络管制；
 - **单实例部署**：号池、限流桶、在途计数都在进程内存里，状态文件是单写者
   （`tmp + fsync + rename`）。不要把同一个 `DEEPAI2API_DATA_PATH` 挂给多个副本
   同时写，也不要期待多副本之间共享调度状态——横向扩展需要外置存储，当前不在范围内；
@@ -819,9 +871,40 @@ go build -ldflags "-X main.version=v0.1.2" -o bin/deepaicode2api .
   2026-11-13 线上实测签到阻塞 292 次、均值 4.8s、53 次顶到 10s，是首包延迟的
   主要来源；下调到 2000 可显著改善延迟（代价：这次请求可能带着旧 nonce 发出，
   下一轮继续补，不会失败）；
+- **签到预热**（v0.1.13 起）：后台每 45s 扫一遍号池，把「到期」的 `/theos`
+  在请求路径之外消化掉（每轮最多 4 个号、2 并发，失败静默）。热路径仍然调
+  `EnsureCheckIn`（nonce 回传语义不变），但因为刚回传过，绝大多数会直接返回；
+  2026-11-22 线上体检发现 37 小时里 940 次请求被签到阻塞（最长吃满 10s 预算）；
+- **出口代理冷却**（v0.1.13 起）：传输失败（代理 504 / EOF / 超时）按代理串记账，
+  连续失败 30s→60s→120s…最多 10 分钟冷却；调度时优先换出口
+  （`poolsvc.PickAvoiding`），只有池里再没有别的号时才用冷却中的出口，
+  不会因此对外 429。冷却数见控制台概览的「出口冷却」；
+- **出口串规范化与预检**（v0.1.15 起）：账号里的代理写 `host:port`（无 scheme）
+  也能正确解析（缺省补 `http://`）；但**启用专属出口前会先探一次**
+  （HTTP CONNECT → 上游 `:443`，6s，结论缓存 10 分钟），探测不过就沿用全局出口
+  并留 WARN —— 避免把请求压到「看起来配了、实际穿不出去」的住宅代理上
+  （2026-11-22 线上事故：缺 scheme → 解析出 `Host=""` → 16 个号的专属出口
+  全部静默失效，流量挤在同一个全局出口上）；
 - **预置桌面端形状**（`preset_desktop_shape`，默认关）：对已确认需要桌面端形状的
   调用方（按 API Key 记忆 10 分钟），在首次发送前补 system 消息，省掉一次注定
   失败的 400。关闭时仍走「透传 → 400 → 补形状重试」的学习路径；
+- **请求体上限与超限处置**（v0.1.28 起，`context_body_bytes` 默认 196608、
+  `body_cap_mode` 默认 `warn`）：上游在约 196 KB 处会对请求体「静默砍头」
+  （issue #7：保留尾部、丢掉开头的 system / 最初几轮，`usage.prompt_tokens`
+  钉在约 40k）。`warn` 只把这类请求记进日志（`body_near_cap` + WARN，阈值 90%）；
+  `reject` 则直接回 `400 invalid_request_error` 并说明字节数与上限，不再把已知会被
+  截断的请求送上去。环境变量 `DEEPAI2API_CONTEXT_BODY_BYTES` 仍可兜底（控制台
+  设置优先）；
+- **三类超时预算**（v0.1.28 起可在控制台调）：`nonstream_budget_sec`（非流式请求
+  整体预算，默认 180s、区间 30~600）取代了旧的硬编码 90s——2026-11-25 线上 6h 内
+  `/v1/chat/completions` 的 60 次 504 全部落在 `ms=90000` 上；`stream_idle_sec`
+  （流式帧间空闲，默认 120s）与 `first_byte_sec`（非流式等首字节，默认 300s）
+  分别覆盖「流卡住」与「长思考还没出首字节」两种长尾；
+- **付费模型只选余额为正的号**（v0.1.28 起）：`theosPerRequest > 0` 的模型在选号时
+  不再接受「额度已确认非正」的账号，也不再靠会话粘性钉到负余额号上。旧行为是
+  「先选有额度的、都没有就全集兜底」，于是负余额号仍会被选中，每个请求白撞一次
+  上游 `403 theos_exhausted`（2026-11-25 线上体检：3 个号为负）。负余额按 `refresh_at` 判定：
+  grant 未到就一直排除，grant 已过（或时间戳缺失）则放行，避免因为一条坏时间戳把号钉死；
 - **签到节奏**与桌面端一致（以回传完成时刻为基准，`seconds/2` 默认 300s）；
   之前用「最新 nonce ≠ 已回传 nonce」判断，会退化成 30s 一次（见 `docs/changes.md` §60）；
 - **管理口令有防爆破退避**：同一来源连续失败 5 次后进入指数退避（1s 起，上限 30s），
@@ -866,12 +949,13 @@ go build -ldflags "-X main.version=v0.1.2" -o bin/deepaicode2api .
 | 文件 | 内容 | 状态 |
 | --- | --- | --- |
 | `README.md` | 总览、接口、参数、验收基线与已知坑（本文） | 维护中 |
-| `docs/recon.md` | 逆向速查：上游端点、请求头、错误语义、复现命令（替代 HAR） | 维护中（最近复核 2026-11-20） |
-| `docs/changes.md` | 2026-11 的改造记录：根因、决策与验收（§71–§76 是最新一轮） | 维护中 |
+| `README.en.md` | 上面这份的完整英文翻译（新增 2026-11-22） | 维护中（与中文版同步） |
+| `docs/recon.md` | 逆向速查：上游端点、请求头、错误语义、复现命令（替代 HAR） | 维护中（最近复核 2026-11-22） |
+| `docs/changes.md` | 2026-11 的改造记录：根因、决策与验收（§71–§77 是最新一轮） | 维护中 |
 | `docs/lessons.md` | **工程经验沉淀**：十批压测 → 可复用规则 + 改动前检查清单 | 维护中 |
 | `docs/performance.md` | 压测数据与优化方案：单号 E2E、阶段分解、P0/P1/P2 收益测算 | 维护中（数据快照 2026-11-10） |
 | `docs/pi-lens.md` | 本仓的 pi-lens 配置说明：关了什么、为什么、怎么验证与恢复 | 维护中 |
-| `docs/model-fingerprint-2026-11-10.md` | 号池 22 个模型的指纹实测（判据与复现命令） | 历史快照：目录已变 27 个，判据仍适用 |
+| `docs/model-fingerprint-2026-11-10.md` | 号池模型指纹实测（11-10 全量 + 11-11 / 11-24 / 11-25 三轮补测，判据与复现命令） | 历史快照：目录已变 28 个；11-25 复测得出「只能用同一轮 3/3 家族比较」的口径 |
 | `docs/optimization-plan.md` | 首轮扫描的完整优化方案 | 历史：已全部实施 |
 | `docs/optimization-plan-r2.md` | 第二轮扫描（写放大 / 控制台 / 复探）的方案与收益测算 | 历史：已实施 |
 | `docs/assets/` | 项目图标：`logo.png`（512，README 用）/ `logo.ico`（16–256 多尺寸，Windows 用）；控制台的 `/favicon.ico` 是同一份（见 `docs/changes.md` §58） |
@@ -881,6 +965,12 @@ go build -ldflags "-X main.version=v0.1.2" -o bin/deepaicode2api .
 ## 十二、License
 
 MIT。本项目仅复刻本机已登录客户端的调用链路，请遵守 DeepAI 的服务条款。
+
+> **客户端自身的声明（0.3.43 新增，0.3.44 / 0.3.45 / 0.3.47 / 0.3.48 / 0.3.50 / 0.3.52 仍在）**：`server.asar` 的 `src/deepai/api.ts` 在
+> 车道头与签到旁边加了一段注释，援引 DeepAI ToS 第 4 条，明写这些请求头与签到是
+> 「DeepAI Code 应用自识别用」，**不允许复制进其它客户端**。本项目只是复用本机
+> 已登录客户端的既有链路、面向自己的账号，不做分发或代运营；如果你要把这套头
+> 用到别处，先自行确认许可。
 
 > **Logo 例外**：`docs/assets/logo.png` / `logo.ico` 取自 DeepAI Code 桌面端自身的应用图标
 > （`resources/app.asar` 内 `apps/desktop/prod-resources/icon.png`），版权归其所有者，

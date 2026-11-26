@@ -22,6 +22,15 @@ v*) ;;
 *) VER="v$VER" ;;
 esac
 
+# 版本号规范：一律 vX.X.X（三段数字），release **标题就是版本号本身**，
+# 不接任何描述后缀 —— 描述写进 release notes（dist/release-notes-<ver>.md）
+# 与 docs/changes.md。历史上出现过「v0.1.17 — 修复……分配代理」这种标题，
+# 列表里参差不齐，也无法机器解析。
+if ! printf '%s' "$VER" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+	echo "版本号必须是 vX.X.X（例：v0.1.23），实际：$VER" >&2
+	exit 1
+fi
+
 echo "版本：$VER"
 mkdir -p dist
 
@@ -59,11 +68,27 @@ if [ "$PUBLISH" -eq 1 ]; then
 		echo "未安装 gh，跳过发布（二进制已在 dist/）"
 		exit 1
 	fi
+	NOTES="dist/release-notes-$VER.md"
+	[ -f "$NOTES" ] || NOTES=""
+	# 只上传本版资产：dist/ 里还躺着历史版本的 release notes（已 gitignore、长期累积），
+	# 用 `dist/*` 会把它们一起挂到每个 Release 上（v0.1.26 之前每个 Release 都带了
+	# 十几份旧 notes）。只挑本版二进制 + checksums + 本版 notes。
+	ASSETS=""
+	for f in dist/deepaicode2api_${VER}_* dist/checksums.txt; do
+		[ -e "$f" ] && ASSETS="$ASSETS $f"
+	done
+	[ -n "$NOTES" ] && ASSETS="$ASSETS $NOTES"
 	if gh release view "$VER" >/dev/null 2>&1; then
-		echo "Release $VER 已存在，改为上传 / 覆盖资产"
-		gh release upload "$VER" dist/* --clobber
+		echo "Release $VER 已存在：覆盖资产并统一标题"
+		gh release upload "$VER" $ASSETS --clobber
+		gh release edit "$VER" --title "$VER"
+		if [ -n "$NOTES" ]; then
+			gh release edit "$VER" --notes-file "$NOTES"
+		fi
+	elif [ -n "$NOTES" ]; then
+		gh release create "$VER" $ASSETS --title "$VER" --notes-file "$NOTES"
 	else
-		gh release create "$VER" dist/* \
+		gh release create "$VER" $ASSETS \
 			--title "$VER" \
 			--notes "DeepAICode2API $VER（详见 docs/changes.md）"
 	fi

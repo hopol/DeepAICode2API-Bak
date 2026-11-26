@@ -19,6 +19,7 @@ import (
 
 	"deepaicode2api/internal/configenv"
 	"deepaicode2api/internal/machine"
+	"deepaicode2api/internal/proxy"
 )
 
 // maxJSONBytes 限制上游 JSON 响应体大小（模型目录 / 配额 / 搜索）。
@@ -108,6 +109,12 @@ type Client struct {
 	UserAgent string
 	Proxy     string
 
+	// ProxyInvalid 非 nil 表示 Proxy 串解析失败（缺 scheme / 不是 http|https|socks5）。
+	//
+	// 此时 transport 不会挂专属出口，请求会退回环境变量里的全局代理；
+	// 调用方可以把这件事上报到控制台，而不是静默地「以为在用专属出口」。
+	ProxyInvalid error
+
 	// Runtime 非 nil 时，车道与签到预算改为**拉取式**：每次请求现取一次。
 	//
 	// 为什么要有它：这两项都能在控制台运行期调整，此前靠 Server 主动
@@ -187,16 +194,24 @@ func NewClientWithFingerprint(proxyRaw, userAgent string) *Client {
 		ForceAttemptHTTP2:     true,
 	}
 	proxyRaw = strings.TrimSpace(proxyRaw)
-	if proxyRaw != "" {
-		if u, err := url.Parse(proxyRaw); err == nil && u.Host != "" {
-			transport.Proxy = http.ProxyURL(u)
-		}
+	// 代理串规范化：线上账号里存的是 `host:port`（没有 scheme），而 url.Parse 会把
+	// 主机名当成 scheme（点号在 scheme 字符集里合法），于是 u.Host 为空、
+	// transport.Proxy 没被设置 —— **按账号分出口静默失效**，全部退回环境变量里的
+	// 全局代理（2026-11-22 线上发现）。这里统一补 http://，解析不了就不设置，
+	// 并记在 ProxyInvalid 上供调用方判断（不静默降级）。
+	proxyURL, proxyErr := proxy.Parse(proxyRaw)
+	if proxyRaw == "" {
+		proxyErr = nil
+	}
+	if proxyErr == nil && proxyURL != nil {
+		transport.Proxy = http.ProxyURL(proxyURL)
 	}
 	return &Client{
 		Origin:             origin,
 		Machine:            machine.ID(),
 		UserAgent:          strings.TrimSpace(userAgent),
 		Proxy:              proxyRaw,
+		ProxyInvalid:       proxyErr,
 		Instance:           newInstanceID(),
 		BrowserFingerprint: true,
 		checkIns:           newCheckInStore(),
@@ -215,11 +230,23 @@ func (c *Client) ModelURL(path string) string { return c.Origin + ModelBasePath 
 func (c *Client) RootURL(path string) string { return c.Origin + path }
 
 // SignInURL 返回桌面端同款浏览器登录地址。
-func (c *Client) SignInURL(state string, port int) string {
+//
+// challenge 非空时按 0.3.45 桌面端的形态带上 PKCE 两参：
+// `code_challenge=<S256(verifier)>&code_challenge_method=S256`。
+//
+// 实测（2026-11-22，0.3.45 当天）：上游对该参数是**可选但在校验**的 ——
+// 不带 challenge 仍 200，带格式非法的 challenge 则 400 `Invalid sign-in proof.`。
+// 因此项目默认发送（与桌面端一致），需要退回旧形态时看
+// `DEEPAI2API_LOGIN_PKCE=0`。
+func (c *Client) SignInURL(state string, port int, challenge string) string {
 	u := c.ModelURL(PathSignIn)
 	q := url.Values{}
 	q.Set("state", state)
 	q.Set("port", fmt.Sprintf("%d", port))
+	if challenge != "" {
+		q.Set(PKCEParamChallenge, challenge)
+		q.Set(PKCEMethodParam, PKCEMethodS256)
+	}
 	return u + "?" + q.Encode()
 }
 
@@ -685,9 +712,16 @@ func (c *Client) Transcribe(ctx context.Context, acct *Account, filename, conten
 }
 
 // ExchangeCode 用桌面端登录回调里的 code 换取 API Key。
-func (c *Client) ExchangeCode(ctx context.Context, code string) (*Credentials, error) {
-	payload, _ := json.Marshal(map[string]string{"code": code})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.ModelURL(PathExchange), bytes.NewReader(payload))
+//
+// verifier 非空时按 0.3.45 桌面端的形态在请求体里带上 `code_verifier`；
+// 它必须与 SignInURL 当时发出的 `code_challenge` 配对（同一会话）。
+func (c *Client) ExchangeCode(ctx context.Context, code, verifier string) (*Credentials, error) {
+	payload := map[string]string{"code": code}
+	if verifier != "" {
+		payload[PKCEParamVerifier] = verifier
+	}
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.ModelURL(PathExchange), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -698,19 +732,19 @@ func (c *Client) ExchangeCode(ctx context.Context, code string) (*Credentials, e
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, &HTTPError{Op: "登录换取密钥", Status: resp.StatusCode, Body: body}
+		return nil, &HTTPError{Op: "登录换取密钥", Status: resp.StatusCode, Body: respBody}
 	}
 	var out struct {
 		APIKey   string `json:"api_key"`
 		Username string `json:"username"`
 		IsPro    bool   `json:"is_pro"`
 	}
-	if err := json.Unmarshal(body, &out); err != nil {
+	if err := json.Unmarshal(respBody, &out); err != nil {
 		return nil, fmt.Errorf("登录响应解析失败: %w", err)
 	}
 	if out.APIKey == "" || strings.ContainsAny(out.APIKey, "\r\n") {

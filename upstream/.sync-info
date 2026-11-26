@@ -1,5 +1,5 @@
-commit=d4c9b2fe5561859940b3ac05d7bb08adc53b395d
-timestamp=2026-11-21T09:23:26Z
+commit=eb802b8c71248c25da7f783e8c49290018ef83e4
+timestamp=2026-11-26T10:36:11Z
 upstream_url=https://github.com/2951461586/DeepAICode2API
 upstream_branch=main
-source_ref=v0.1.12
+source_ref=v0.1.29-1-geb802b8

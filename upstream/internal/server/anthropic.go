@@ -63,7 +63,10 @@ func (s *Server) blockingAnthropic(w http.ResponseWriter, r *http.Request, paylo
 	ctx, cancel := httpx.ContextWithTimeout(r, s.requestTimeout())
 	defer cancel()
 
-	out, acct, err := s.callJSON(ctx, deepai.PathChat, payload, affinity, s.requestGroup(r), rl.apiKey())
+	out, acct, outBytes, err := s.callJSON(ctx, deepai.PathChat, payload, affinity, s.requestGroup(r), rl.apiKey(), s.requireQuotaFor(rl.model))
+	if outBytes > 0 {
+		rl = rl.withOutboundBytes(outBytes)
+	}
 	rl.acct = acct
 	if err != nil {
 		rl.done(0, gateway.Usage{}, err)
@@ -89,7 +92,8 @@ func (s *Server) streamAnthropic(w http.ResponseWriter, r *http.Request, payload
 		writeAnthropicErr(w, http.StatusBadRequest, "invalid_request_error", "请求序列化失败")
 		return
 	}
-	resp, acct, err := s.openModel(ctx, deepai.PathChat, body, affinity, s.requestGroup(r), rl.apiKey(), true)
+	rl = rl.withOutboundBytes(len(body))
+	resp, acct, err := s.openModel(ctx, deepai.PathChat, body, affinity, s.requestGroup(r), rl.apiKey(), true, s.requireQuotaFor(rl.model))
 	rl.acct = acct
 	if err != nil {
 		rl.done(0, gateway.Usage{}, err)

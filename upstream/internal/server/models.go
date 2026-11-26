@@ -7,6 +7,7 @@ import (
 
 	"deepaicode2api/internal/deepai"
 	"deepaicode2api/internal/registry"
+	"deepaicode2api/internal/respstate"
 )
 
 // catalog 返回当前模型目录；目录为空时回落到内置兜底模型，
@@ -68,6 +69,16 @@ func (s *Server) resolveModelOK(name string) (deepai.Model, bool) {
 	return registry.Resolve(catalog, settings.ModelAliases, name, def), true
 }
 
+// requireQuotaFor 报告该模型是否必须落在「余额为正」的账号上。
+//
+// 付费模型（theosPerRequest > 0）会消耗账号 Theos，选到负余额号只能换一个
+// 403 theos_exhausted 再重试；免费模型没有这个限制，所以不拿额度卡它
+// （2026-11-25 线上：3 个负余额号仍在被付费请求选中）。
+func (s *Server) requireQuotaFor(modelID string) bool {
+	m, ok := s.resolveModelOK(modelID)
+	return ok && !m.Free()
+}
+
 // defaultModelID 返回回落目标：设置里的兜底模型优先，否则目录默认。
 //
 // 目录默认空串时会再退一步取目录首项：否则「默认模型」会显示为空，
@@ -126,6 +137,10 @@ func adminModelViews(models []deepai.Model) []map[string]any {
 			"theosPerRequest": m.TheosPerRequest,
 			"theosPerSecond":  m.TheosPerSecond,
 			"free":            m.Free(),
+			// 有效上限（实测）：contextWindow 是上游标称值，与 /v1/models 的
+			// effective_context_window / context_body_bytes 同源。
+			"effectiveContextWindow": respstate.EffectiveContextWindow(m.ID, m.ContextWindow),
+			"contextBodyBytes":       respstate.ContextBodyBytes(),
 		})
 	}
 	return out

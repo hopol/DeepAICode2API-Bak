@@ -119,6 +119,52 @@ func TestHasQuota(t *testing.T) {
 	}
 }
 
+// PickFilteredFor(requireQuota) 是硬约束：付费模型绝不能落到负余额账号上。
+//
+// 旧行为（PickFiltered）是「先选有额度的、都没有就全集兜底」，所以负余额号
+// 仍会被选中，每个请求白撞一次 403 theos_exhausted（2026-11-25 线上体检）。
+func TestPickFilteredForRequiresQuota(t *testing.T) {
+	s := New()
+	now := time.Now().Unix()
+	neg, pos := acct("neg", ""), acct("pos", "")
+	// 负余额必须带「grant 还没到」的 refresh_at 才算确定没额度（见 HasQuota）。
+	neg.Theos = &model.Allowance{
+		Enabled: true, Balance: "-13.89000", CheckedAt: now,
+		RefreshAt: time.Now().Add(6 * time.Hour).UTC().Format(time.RFC3339),
+	}
+	pos.Theos = &model.Allowance{Enabled: true, Balance: "2.50000", CheckedAt: now}
+
+	// 免费模型（requireQuota=false）：保持旧语义，池里还有号就绝不硬阻塞。
+	if got := s.PickFilteredFor([]*model.Account{neg}, "", nil, false); got == nil {
+		t.Fatal("免费模型不应因为负余额而无号可用")
+	}
+	// 付费模型（requireQuota=true）：只有负余额号时返回 nil，由调用方报「无可用账号」。
+	if got := s.PickFilteredFor([]*model.Account{neg}, "", nil, true); got != nil {
+		t.Fatalf("付费模型不应选到负余额账号，实际 %v", got.ID)
+	}
+	// 两类都在时选有钱的那个。
+	for i := 0; i < 10; i++ {
+		if got := s.PickFilteredFor([]*model.Account{neg, pos}, "", nil, true); got == nil || got.ID != "pos" {
+			t.Fatalf("付费模型应选到有余额的账号，实际 %v", got)
+		}
+	}
+}
+
+// HasEligibleFor 与 PickFilteredFor 必须同口径，否则「说有号、选不到」。
+func TestHasEligibleForRequiresQuota(t *testing.T) {
+	s := New()
+	now := time.Now().Unix()
+	neg := acct("neg", "")
+	neg.Theos = &model.Allowance{Enabled: true, Balance: "0", CheckedAt: now}
+
+	if !s.HasEligibleFor([]*model.Account{neg}, "", false) {
+		t.Fatal("免费模型口径下应认为有可调度账号")
+	}
+	if s.HasEligibleFor([]*model.Account{neg}, "", true) {
+		t.Fatal("付费模型口径下不应认为有可调度账号")
+	}
+}
+
 func TestPickEmpty(t *testing.T) {
 	if got := New().Pick(nil, ""); got != nil {
 		t.Fatalf("空号池应返回 nil，实际 %v", got)
@@ -168,5 +214,44 @@ func TestPickSkipsQuotaExhausted(t *testing.T) {
 	}
 	if !seen["a"] || !seen["b"] {
 		t.Fatalf("额度恢复后两个账号都应参与轮询，实际 %v", seen)
+	}
+}
+
+// TestHasQuotaNegativeBalance 固化「负余额 ≠ 陈旧的 0」。
+//
+// 0 可能是「刚入池、当日额度还没下发」，所以陈旧就要放行；负数是已经超额消耗，
+// 只能等上游 grant（refresh_at）。2026-11-25 线上 17 个号里 quota_fresh 只有 2 个，
+// 若负数也按陈旧放行，付费硬约束（requireQuota）就只会拦掉刚探过的那几个。
+func TestHasQuotaNegativeBalance(t *testing.T) {
+	now := time.Now()
+	future := now.Add(6 * time.Hour).UTC().Format(time.RFC3339)
+	past := now.Add(-6 * time.Hour).UTC().Format(time.RFC3339)
+	staleChecked := now.Add(-2 * time.Hour).Unix()
+
+	cases := []struct {
+		name string
+		a    *model.Account
+		want bool
+	}{
+		{"负余额+refresh 未到（快照很旧）", &model.Account{Theos: &model.Allowance{
+			Enabled: true, Balance: "-13.89402", RefreshAt: future, CheckedAt: staleChecked,
+		}}, false},
+		{"负余额+refresh 已过（grant 应已下发）", &model.Account{Theos: &model.Allowance{
+			Enabled: true, Balance: "-13.89402", RefreshAt: past, CheckedAt: staleChecked,
+		}}, true},
+		{"负余额+无 refresh", &model.Account{Theos: &model.Allowance{
+			Enabled: true, Balance: "-0.04773", CheckedAt: staleChecked,
+		}}, true},
+		{"负余额+refresh 格式不对", &model.Account{Theos: &model.Allowance{
+			Enabled: true, Balance: "-0.04773", RefreshAt: "2026-11-26 09:56", CheckedAt: staleChecked,
+		}}, true},
+		{"旧的 0（陈旧放行）", &model.Account{Theos: &model.Allowance{
+			Enabled: true, Balance: "0", RefreshAt: future, CheckedAt: staleChecked,
+		}}, true},
+	}
+	for _, c := range cases {
+		if got := HasQuota(c.a); got != c.want {
+			t.Fatalf("%s: HasQuota = %v，期望 %v", c.name, got, c.want)
+		}
 	}
 }
